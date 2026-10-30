@@ -1,0 +1,22 @@
+{
+  "name": "box-rush",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "lint:ur": "node tools/lint-ur.mjs",
+    "lint:i18n": "node tools/check-i18n.mjs",
+    "db:migrate": "pnpm --filter @boxrush/db migrate",
+    "db:seed": "pnpm --filter @boxrush/services seed",
+    "dev:web": "pnpm --filter @boxrush/web dev",
+    "dev:admin": "pnpm --filter @boxrush/admin dev",
+    "worker": "pnpm --filter @boxrush/services worker",
+    "ci": "pnpm lint:ur && pnpm lint:i18n && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "^22.10.0"
+  }
+}
