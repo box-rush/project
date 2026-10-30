@@ -1,0 +1,36 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: boxrush
+          POSTGRES_PASSWORD: boxrush
+          POSTGRES_DB: boxrush
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U boxrush" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://boxrush:boxrush@localhost:5432/boxrush
+      PAYMENT_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # UR lint, i18n parity, typecheck, core vectors/property tests, PostgreSQL integration tests
+      - run: pnpm ci
+      - run: pnpm db:reset
+      - run: pnpm --filter @boxrush/web build
+      - run: pnpm --filter @boxrush/admin build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e

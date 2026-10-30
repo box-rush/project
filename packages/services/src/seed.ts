@@ -68,7 +68,7 @@ async function main() {
   const cs = await mkStaff("cs@boxrush.local", "サポート", ["CS", "FINANCE", "ANALYST"]);
   void admin;
 
-  const prods = [];
+  const prods: { set: (typeof SETS)[number]; product: typeof products.$inferSelect; template: typeof checklistTemplates.$inferSelect; entries: ReturnType<typeof checklistFor> }[] = [];
   for (const s of SETS) {
     const [p] = await db.insert(products).values({ category: s.category, maker: s.maker, series: s.series, setCode: s.setCode, sealedUnit: "BOX", packsPerUnit: s.packs, retailPrice: s.retail, cardNumberHint: s.hint, imageUrl: `/mock/${s.category.toLowerCase()}.svg` }).returning();
     const entries = checklistFor(s);
