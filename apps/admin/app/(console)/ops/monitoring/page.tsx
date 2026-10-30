@@ -1,15 +1,16 @@
 import { getTranslations } from "next-intl/server";
-import { jobsOverview } from "@boxrush/services";
+import { getSetting, jobsOverview } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { JstFull, Kpi, PageHeader } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { reconcileAction } from "../actions";
+import { reconcileAction, recordingLossPolicyAction } from "../actions";
 
 /** O20 / T13, T17: job queue health. The seed vault (T11) is a separate permission domain and is not reachable here. */
 export default async function Monitoring() {
   const staff = await requirePageRole("ADMIN");
   const t = await getTranslations("monitoring");
   const j = await jobsOverview(ctx(), staff);
+  const policy = await getSetting(ctx().db, "recordingLossUnconfirmed");
   return (
     <>
       <PageHeader title={t("title")} code="O20">
@@ -60,6 +61,22 @@ export default async function Monitoring() {
         </table>
       </div>
       <p className="mt-3 text-xs text-ink2">{t("vaultNotice")}</p>
+
+      <section className="card mt-6 space-y-3">
+        <h2 className="h2">{t("recordingLossTitle")}</h2>
+        <p className="text-xs text-ink2">{t("recordingLossHelp")}</p>
+        <ActionForm action={recordingLossPolicyAction} submitLabel={t("save")}>
+          {(["AUTO_ABORT_24H", "ALERT_ONLY"] as const).map((v) => (
+            <label key={v} className="flex items-start gap-2 text-sm">
+              <input type="radio" name="value" value={v} defaultChecked={policy === v} className="mt-1" />
+              <span>
+                <span className="font-semibold">{t(`recordingLoss.${v}.label`)}</span>
+                <span className="block text-xs text-ink2">{t(`recordingLoss.${v}.help`)}</span>
+              </span>
+            </label>
+          ))}
+        </ActionForm>
+      </section>
     </>
   );
 }

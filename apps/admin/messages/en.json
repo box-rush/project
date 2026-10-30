@@ -218,7 +218,8 @@
     "ON_LIST_CARD_FIXED_SLOT": "An on-list card number can only go to the slot the draw gave it",
     "INVENTORY_UNAVAILABLE": "The box or guarantee cards are already allocated to another lottery",
     "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later",
-    "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes"
+    "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes",
+    "INVALID_SETTING": "Invalid value"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -986,6 +987,19 @@
       "RUNNING": "Running",
       "FAILED": "Failed",
       "DONE": "Done"
+    },
+    "recordingLossTitle": "When a recording-loss report is not confirmed",
+    "recordingLossHelp": "What happens when a station reports both recording paths lost and no second person confirms. Alerts start after 15 minutes in either case. Changes are audited.",
+    "save": "Save",
+    "recordingLoss": {
+      "AUTO_ABORT_24H": {
+        "label": "Abort and fully refund automatically after 24 hours",
+        "help": "Buyers are never left waiting, but without a confirmer a single report ends in an abort."
+      },
+      "ALERT_ONLY": {
+        "label": "Alert only (never abort automatically)",
+        "help": "Keeps the two-person rule strictly; until someone confirms, the opening stays open and nobody is refunded."
+      }
     }
   }
 }

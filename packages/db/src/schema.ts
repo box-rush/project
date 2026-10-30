@@ -787,6 +787,14 @@ export const auditArchives = pgTable("audit_archives", {
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
+/** Platform settings chosen by an ADMIN (audited). */
+export const platformSettings = pgTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
 /** T13 job queue: state change and its next job are written in the same transaction. */
 export const jobs = pgTable(
   "jobs",

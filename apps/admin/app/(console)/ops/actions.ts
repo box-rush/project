@@ -24,6 +24,7 @@ import {
   rejectLottery,
   replyTicket,
   runReconcileNow,
+  setSetting,
   saveChecklistDraft,
   updateBanner,
   verifyAuditChainForStaff,
@@ -301,4 +302,9 @@ export async function reconcileAction(_: Prev): Promise<ActionResult<unknown>> {
   const r = await act((s) => runReconcileNow(ctx(), s), { revalidate: ["/ops/monitoring"] });
   if (!r.ok) return r;
   return { ok: true, message: "reconciled", params: { fixes: r.data!.fixes.length, failed: r.data!.failedJobs } };
+}
+
+// ───── O20 platform settings (ADMIN) ─────
+export async function recordingLossPolicyAction(_: Prev, fd: FormData) {
+  return act((s) => setSetting(ctx(), s, "recordingLossUnconfirmed", str(fd, "value")), { revalidate: ["/ops/monitoring"], message: "saved" });
 }

@@ -6,6 +6,7 @@ import { fail } from "./errors";
 import { getLottery, lockLottery, transition, type Lottery } from "./lotteries";
 import { notify } from "./notifications";
 import { requireRole, staffActor, type StaffPrincipal } from "./principals";
+import { getSetting } from "./settings";
 import { scheduleOrderRefund } from "./refunds";
 
 type Snapshot = { checklist: { number: string; name: string; rarity: string }[]; fallbackRule: string; openingAt: string };
@@ -92,8 +93,9 @@ export async function confirmRecordingAbort(ctx: Ctx, p: StaffPrincipal, lottery
 }
 
 /**
- * N3: a both-paths-down report nobody confirms must not leave buyers stuck in OPENING. Reconcile alerts after
- * 15 minutes and, 24 hours after the report (same grace as PD12), the system confirms the abort and refunds everyone.
+ * A both-paths-down report nobody confirms: reconcile alerts after 15 minutes. What happens after 24 hours is an
+ * ADMIN setting (settings.ts, recordingLossUnconfirmed): AUTO_ABORT_24H confirms the abort and refunds everyone
+ * (same grace as PD12); ALERT_ONLY keeps alerting until a second person acts.
  */
 export async function escalatePendingAborts(ctx: Ctx) {
   const now = ctx.now();
@@ -104,10 +106,11 @@ export async function escalatePendingAborts(ctx: Ctx) {
     .where(and(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"), eq(lotteries.status, "OPENING")));
   let alerts = 0;
   let errors = 0;
+  const policy = pending.length ? await getSetting(ctx.db, "recordingLossUnconfirmed") : "AUTO_ABORT_24H";
   for (const s of pending) {
     const age = now.getTime() - (s.requestedAt?.getTime() ?? now.getTime());
     try {
-      if (age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
+      if (policy === "AUTO_ABORT_24H" && age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
       else if (age >= 15 * 60_000) alerts++;
     } catch (e) {
       // one lottery must never stall the reconcile loop (and with it the whole job queue)

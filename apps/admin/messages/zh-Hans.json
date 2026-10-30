@@ -218,7 +218,8 @@
     "ON_LIST_CARD_FIXED_SLOT": "清单内的卡号只能归属到抽选决定的位",
     "INVENTORY_UNAVAILABLE": "该盒或保底卡已被分配给其他场次",
     "LOGIN_THROTTLED": "登录失败次数过多，请稍后再试",
-    "MFA_LOCKED": "二步验证失败次数过多，已锁定 15 分钟"
+    "MFA_LOCKED": "二步验证失败次数过多，已锁定 15 分钟",
+    "INVALID_SETTING": "无效的设置值"
   },
   "issues": {
     "SCHEMA": "输入不完整或格式不正确（{field}）",
@@ -986,6 +987,19 @@
       "RUNNING": "运行中",
       "FAILED": "失败",
       "DONE": "完成"
+    },
+    "recordingLossTitle": "录像中断报告无人确认时",
+    "recordingLossHelp": "开盒员报告“两路中断”后，迟迟没有另一名人员确认时的处理方式。15 分钟后始终告警。修改会记入审计日志。",
+    "save": "保存",
+    "recordingLoss": {
+      "AUTO_ABORT_24H": {
+        "label": "24 小时后自动中止并全额退款",
+        "help": "买家不会被一直卡住；但若无人确认，单人报告也会导致中止。"
+      },
+      "ALERT_ONLY": {
+        "label": "仅告警（不自动中止）",
+        "help": "严格保持双人确认；确认前场次一直处于开盒中，也不会退款。"
+      }
     }
   }
 }
