@@ -1,0 +1,270 @@
+@import "tailwindcss";
+
+/* Design tokens (§9.2). Light + dark; explicit data-theme overrides the system preference. */
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --secondary: #6b6b6b;
+  --line: #e3e2db;
+  --track: #ecebe4;
+  --primary: #3b3fd8;
+  --primary-ink: #ffffff;
+  --primary-soft: #ecedfc;
+  --trust: #0f9d8a;
+  --trust-soft: #e1f3f0;
+  --warning: #d98a00;
+  --warning-soft: #fbf0dc;
+  --error: #d14343;
+  --error-soft: #fbe7e7;
+  --gold: #c9a227;
+  --gold-soft: #f7efd2;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111214;
+    --surface: #1a1b1e;
+    --text: #f2f2f2;
+    --secondary: #a0a0a0;
+    --line: #2a2b2f;
+    --track: #2a2b2f;
+    --primary: #8e91f7;
+    --primary-ink: #111214;
+    --primary-soft: #23244a;
+    --trust: #3cc4b0;
+    --trust-soft: #15302c;
+    --warning: #f0a73a;
+    --warning-soft: #3a2c12;
+    --error: #ef6b6b;
+    --error-soft: #3a1c1c;
+    --gold: #d9b84a;
+    --gold-soft: #3a3214;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111214;
+  --surface: #1a1b1e;
+  --text: #f2f2f2;
+  --secondary: #a0a0a0;
+  --line: #2a2b2f;
+  --track: #2a2b2f;
+  --primary: #8e91f7;
+  --primary-ink: #111214;
+  --primary-soft: #23244a;
+  --trust: #3cc4b0;
+  --trust-soft: #15302c;
+  --warning: #f0a73a;
+  --warning-soft: #3a2c12;
+  --error: #ef6b6b;
+  --error-soft: #3a1c1c;
+  --gold: #d9b84a;
+  --gold-soft: #3a3214;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--text);
+  --color-ink2: var(--secondary);
+  --color-line: var(--line);
+  --color-track: var(--track);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-trust: var(--trust);
+  --color-trust-soft: var(--trust-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --font-sans: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--primary-ink);
+    border-color: var(--primary);
+  }
+  .btn-trust {
+    background: var(--trust);
+    color: #fff;
+    border-color: var(--trust);
+  }
+  .btn-warning {
+    background: var(--warning);
+    color: #1a1a1a;
+    border-color: var(--warning);
+  }
+  .btn-danger {
+    background: var(--error);
+    color: #fff;
+    border-color: var(--error);
+  }
+  .input {
+    min-height: 34px;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    width: 100%;
+  }
+  textarea.input {
+    padding: 8px 10px;
+  }
+  .label {
+    display: block;
+    font-size: 12px;
+    color: var(--secondary);
+    margin-bottom: 2px;
+  }
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .tbl th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--secondary);
+    border-bottom: 1px solid var(--line);
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+  .tbl td {
+    border-bottom: 1px solid var(--line);
+    padding: 6px 8px;
+    vertical-align: top;
+  }
+  .tbl tr:hover td {
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--track);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .badge-trust {
+    background: var(--trust-soft);
+    color: var(--trust);
+    border-color: transparent;
+  }
+  .badge-warning {
+    background: var(--warning-soft);
+    color: var(--warning);
+    border-color: transparent;
+  }
+  .badge-error {
+    background: var(--error-soft);
+    color: var(--error);
+    border-color: transparent;
+  }
+  .badge-primary {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-color: transparent;
+  }
+  .badge-gold {
+    background: var(--gold-soft);
+    color: var(--gold);
+    border-color: var(--gold);
+  }
+  .mono {
+    font-family: var(--font-mono);
+  }
+  .muted {
+    color: var(--secondary);
+  }
+  .h1 {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .h2 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .kpi {
+    font-size: 26px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+  }
+  /* Station: single dark high-contrast theme for the dim opening table (UI-14). */
+  .station {
+    --bg: #0e0f11;
+    --surface: #17191c;
+    --text: #f4f4f2;
+    --secondary: #a7a9ad;
+    --line: #2e3136;
+    --track: #1f2226;
+    --primary: #8e91f7;
+    --primary-ink: #0e0f11;
+    --trust: #3cc4b0;
+    --warning: #f0a73a;
+    --error: #ff5a5a;
+    background: var(--bg);
+    color: var(--text);
+    color-scheme: dark;
+  }
+  .station .btn {
+    min-height: 56px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+}

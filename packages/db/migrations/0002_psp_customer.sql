@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "psp_customer_ref" text;

@@ -1,0 +1,9 @@
+**/node_modules
+**/.next
+**/test-results
+**/playwright-report
+.sst
+.git
+.audit-archive
+**/.env
+**/.env.local

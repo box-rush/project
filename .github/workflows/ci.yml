@@ -1,0 +1,64 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: boxrush
+          POSTGRES_PASSWORD: boxrush
+          POSTGRES_DB: boxrush
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U boxrush" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://boxrush:boxrush@localhost:5432/boxrush
+      PAYMENT_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # UR lint, i18n parity, typecheck, core vectors/property tests, PostgreSQL integration tests
+      - run: pnpm check
+      - run: pnpm db:reset
+      - run: pnpm --filter @boxrush/web build
+      - run: pnpm --filter @boxrush/admin build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # SST platform types, then typecheck sst.config.ts + infra/stack.ts (no AWS credentials needed)
+      - run: pnpm exec sst install --stage ci
+      - run: pnpm exec tsc -p infra/tsconfig.json
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [web, admin, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: docker build ${{ matrix.target }}
+        run: docker buildx build -f infra/Dockerfile --target ${{ matrix.target }} -t boxrush-${{ matrix.target }}:ci --load .
+      - name: worker image entry points resolve
+        if: matrix.target == 'worker'
+        run: docker run --rm boxrush-worker:ci packages/services/node_modules/.bin/tsx -e "import('./packages/services/src/index.ts').then(() => console.log('ok'))"

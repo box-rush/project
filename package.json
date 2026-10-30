@@ -1,0 +1,29 @@
+{
+  "name": "box-rush",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "lint:ur": "node tools/lint-ur.mjs",
+    "lint:i18n": "node tools/check-i18n.mjs",
+    "db:migrate": "pnpm --filter @boxrush/db migrate",
+    "db:seed": "pnpm --filter @boxrush/services seed",
+    "dev:web": "pnpm --filter @boxrush/web dev",
+    "dev:admin": "pnpm --filter @boxrush/admin dev",
+    "worker": "pnpm --filter @boxrush/services worker",
+    "check": "pnpm lint:ur && pnpm lint:i18n && pnpm typecheck && pnpm test",
+    "e2e": "playwright test",
+    "db:reset": "psql postgres://boxrush:boxrush@localhost/postgres -c 'DROP DATABASE IF EXISTS boxrush WITH (FORCE)' -c 'CREATE DATABASE boxrush' && pnpm --filter @boxrush/services seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.10.0",
+    "pg": "^8.23.1",
+    "sst": "3.19.3",
+    "typescript": "5.9.3"
+  }
+}
