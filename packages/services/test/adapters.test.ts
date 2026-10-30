@@ -44,3 +44,23 @@ describe("messaging adapters (T5, T10)", () => {
     expect(onFailover).toHaveBeenCalled();
   });
 });
+
+describe("T11 KMS seed encryption", () => {
+  it("encrypts with the purpose context and decrypts back", async () => {
+    const { KmsKeyProvider } = await import("../src");
+    const store = new Map<string, string>();
+    const send = vi.fn(async (cmd: { constructor: { name: string }; input: Record<string, unknown> }) => {
+      expect(cmd.input.EncryptionContext).toEqual({ purpose: "boxrush-server-seed" });
+      if (cmd.constructor.name === "EncryptCommand") {
+        const blob = Buffer.from(`ct-${store.size}`);
+        store.set(blob.toString(), Buffer.from(cmd.input.Plaintext as Uint8Array).toString());
+        return { CiphertextBlob: blob };
+      }
+      return { Plaintext: Buffer.from(store.get(Buffer.from(cmd.input.CiphertextBlob as Uint8Array).toString())!) };
+    });
+    const k = new KmsKeyProvider("alias/seed", { send } as never);
+    const ct = await k.encrypt("seed-hex");
+    expect(ct.startsWith("kms:")).toBe(true);
+    expect(await k.decrypt(ct)).toBe("seed-hex");
+  });
+});

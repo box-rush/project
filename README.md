@@ -56,6 +56,9 @@ python3 apps/web/public/bx_shuffle_v1.py record.json   # offline verifier for a 
 | S3 Object Lock audit archive (T7) | implemented, hourly in the worker | `AUDIT_ARCHIVE_BUCKET` |
 | Yamato B2クラウド (T14), Amazon IVS + OBS station pipeline (T2) | not implemented (tracking / delivery is a staff action; segments come via `ingestSegment`) | — |
 
+## Deploying
+AWS Tokyo via SST v3: see [infra/README.md](infra/README.md) (stack, secrets, migrations, DB login roles, known gaps).
+
 ## Not in this repository yet
-Infrastructure as code (SST/AWS), the integrations marked above, Sentry / CloudWatch / WAF / Turnstile (T17, T18).
+The integrations marked above, Sentry / CloudWatch / WAF / Turnstile (T17, T18), the separate randomness account.
 Legal texts are placeholders (legal items on hold, 2026-10-15).

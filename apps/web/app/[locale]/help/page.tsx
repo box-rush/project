@@ -4,7 +4,8 @@ import { getCtx } from "@/lib/ctx";
 import { Link } from "@/i18n/routing";
 import { PageTitle, Section } from "@/components/ui";
 
-export const revalidate = 300;
+// rendered per request: the image is built without a database; CDN caching is configured in front (infra)
+export const dynamic = "force-dynamic";
 
 /** U33 help (F12.1, F12.2). Content is maintained in ops (F23.4); Japanese is authoritative. */
 export default async function HelpPage({ params }: { params: Promise<{ locale: string }> }) {

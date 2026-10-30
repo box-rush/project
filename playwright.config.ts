@@ -20,8 +20,8 @@ export default defineConfig({
           url: "http://localhost:3100",
           reuseExistingServer: true,
           timeout: 120_000,
-          env: { PAYMENT_PROVIDER: "mock", BETTER_AUTH_URL: "http://localhost:3100", WEB_BASE_URL: "http://localhost:3100" },
+          env: { PAYMENT_PROVIDER: "mock", BETTER_AUTH_URL: "http://localhost:3100", WEB_BASE_URL: "http://localhost:3100", RNG_SEED_KEY: "00".repeat(32) },
         },
-        { command: "pnpm --filter @boxrush/admin exec next start -p 3101", url: "http://localhost:3101/login", reuseExistingServer: true, timeout: 120_000 },
+        { command: "pnpm --filter @boxrush/admin exec next start -p 3101", url: "http://localhost:3101/login", reuseExistingServer: true, timeout: 120_000, env: { RNG_SEED_KEY: "00".repeat(32) } },
       ],
 });

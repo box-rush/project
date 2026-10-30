@@ -30,3 +30,29 @@ export class LocalAesKeyProvider implements SeedKeyProvider {
     return Buffer.concat([d.update(body!), d.final()]).toString("utf8");
   }
 }
+
+/**
+ * T11 production: AWS KMS key in the randomness account. The key policy allows Decrypt only to the randomness
+ * service role, and every decrypt is logged in CloudTrail. The plaintext seed exists only in that service's memory.
+ */
+export class KmsKeyProvider implements SeedKeyProvider {
+  constructor(
+    readonly keyId: string,
+    private readonly client: Pick<import("@aws-sdk/client-kms").KMSClient, "send">,
+  ) {}
+  static async create(keyId: string) {
+    const { KMSClient } = await import("@aws-sdk/client-kms");
+    return new KmsKeyProvider(keyId, new KMSClient({ region: process.env.AWS_REGION ?? "ap-northeast-1" }));
+  }
+  async encrypt(plaintext: string) {
+    const { EncryptCommand } = await import("@aws-sdk/client-kms");
+    const r = await this.client.send(new EncryptCommand({ KeyId: this.keyId, Plaintext: Buffer.from(plaintext, "utf8"), EncryptionContext: { purpose: "boxrush-server-seed" } }));
+    return `kms:${Buffer.from(r.CiphertextBlob!).toString("base64")}`;
+  }
+  async decrypt(ciphertext: string) {
+    const { DecryptCommand } = await import("@aws-sdk/client-kms");
+    if (!ciphertext.startsWith("kms:")) throw new Error("not a KMS ciphertext");
+    const r = await this.client.send(new DecryptCommand({ KeyId: this.keyId, CiphertextBlob: Buffer.from(ciphertext.slice(4), "base64"), EncryptionContext: { purpose: "boxrush-server-seed" } }));
+    return Buffer.from(r.Plaintext!).toString("utf8");
+  }
+}

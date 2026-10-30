@@ -5,7 +5,8 @@ import { Link } from "@/i18n/routing";
 import { PageTitle, StatusBadge } from "@/components/ui";
 import { LookupForm } from "./LookupForm";
 
-export const revalidate = 60;
+// rendered per request: the image is built without a database; CDN caching is configured in front (infra)
+export const dynamic = "force-dynamic";
 
 /** V02 public verifier entry (no login). */
 export default async function VerifyIndex({ params }: { params: Promise<{ locale: string }> }) {

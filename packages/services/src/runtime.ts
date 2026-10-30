@@ -1,5 +1,6 @@
 import { createDb } from "@boxrush/db";
-import { LocalAesKeyProvider } from "./adapters/keys";
+import { KMSClient } from "@aws-sdk/client-kms";
+import { KmsKeyProvider, LocalAesKeyProvider, type SeedKeyProvider } from "./adapters/keys";
 import { ConsoleMessaging } from "./adapters/messaging";
 import { MockPaymentProvider, type PaymentProvider } from "./adapters/payments";
 import { StripePaymentProvider } from "./adapters/stripe";
@@ -19,6 +20,15 @@ const g = globalThis as unknown as { __boxrushCtx?: Ctx; __boxrushMock?: MockPay
 /** Shared mock provider so the dev checkout and the webhook simulator see the same payments. */
 export function mockPayments(): MockPaymentProvider {
   return (g.__boxrushMock ??= new MockPaymentProvider());
+}
+
+/** T11: KMS in deployed environments; the local AES key only when no KMS key is configured. */
+function seedKeys(): SeedKeyProvider {
+  if (process.env.RNG_KMS_KEY_ID) {
+    return new KmsKeyProvider(process.env.RNG_KMS_KEY_ID, new KMSClient({ region: process.env.AWS_REGION ?? "ap-northeast-1" }));
+  }
+  if (process.env.NODE_ENV === "production" && !process.env.RNG_SEED_KEY) throw new Error("RNG_KMS_KEY_ID (or RNG_SEED_KEY outside AWS) is required");
+  return new LocalAesKeyProvider(process.env.RNG_SEED_KEY ?? "00".repeat(32));
 }
 
 function smsSender(console_: SmsSender): SmsSender {
@@ -43,11 +53,15 @@ export function createRuntime(): Ctx {
   if (process.env.PAYMENT_PROVIDER === "stripe") {
     payments = new StripePaymentProvider(required("STRIPE_SECRET_KEY"), required("STRIPE_WEBHOOK_SECRET"));
   } else payments = mockPayments();
+  let rngService: RandomnessService | undefined;
   const ctx: Ctx = {
     db,
     now: () => new Date(),
     payments,
-    rng: new RandomnessService(rngDb, new LocalAesKeyProvider(process.env.RNG_SEED_KEY ?? "00".repeat(32))),
+    // lazy: the seed key is resolved on first use, never at import / build time
+    get rng() {
+      return (rngService ??= new RandomnessService(rngDb, seedKeys()));
+    },
     email: process.env.EMAIL_PROVIDER === "ses" ? new SesEmailSender(required("EMAIL_FROM"), undefined, process.env.SES_CONFIGURATION_SET) : (messaging as EmailSender),
     line: process.env.LINE_PROVIDER === "line" ? new LineMessagingSender(required("LINE_CHANNEL_ACCESS_TOKEN")) : (messaging as LineSender),
     sms: smsSender(messaging),

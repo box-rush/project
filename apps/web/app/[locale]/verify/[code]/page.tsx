@@ -10,7 +10,8 @@ import { Notice, PageTitle, Section, SelfOperatedBadge, StatusBadge } from "@/co
 import { Verifier } from "./Verifier";
 import { ShareButton } from "@/components/ShareButton";
 
-export const revalidate = 30;
+// rendered per request: the image is built without a database; CDN caching is configured in front (infra)
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; code: string }> }): Promise<Metadata> {
   const { locale, code } = await params;

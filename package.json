@@ -23,6 +23,7 @@
     "@playwright/test": "1.63.0",
     "@types/node": "^22.10.0",
     "pg": "^8.23.1",
+    "sst": "3.19.3",
     "typescript": "5.9.3"
   }
 }

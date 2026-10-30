@@ -4,7 +4,8 @@ import { getCtx } from "@/lib/ctx";
 import { Link } from "@/i18n/routing";
 import { Notice, PageTitle, Section } from "@/components/ui";
 
-export const revalidate = 3600;
+// rendered per request: the image is built without a database; CDN caching is configured in front (infra)
+export const dynamic = "force-dynamic";
 
 /**
  * U35 legal notices (F1.8, F1.9). Texts are drafts pending counsel review — legal items are on hold
