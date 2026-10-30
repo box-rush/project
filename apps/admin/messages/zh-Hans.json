@@ -929,7 +929,12 @@
       "refund_SHIPMENT": "退款（运费）",
       "shipping_paid": "运费（用户承担）",
       "shipping_platform_advanced": "运费（平台垫付）"
-    }
+    },
+    "evidenceTitle": "拒付证据包（P8）",
+    "evidenceHelp": "按订单 ID 或 Stripe PaymentIntent ID 下载 JSON：订单、规则、抽选、卡片录像时间点、发货与审计日志（导出会写入审计日志）。",
+    "evidenceOrder": "订单 ID / PaymentIntent ID",
+    "evidencePlaceholder": "pi_… 或订单 ID",
+    "evidenceDownload": "下载"
   },
   "audit": {
     "title": "审计日志",

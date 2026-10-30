@@ -9,3 +9,4 @@ playwright-report
 .turbo
 *.tsbuildinfo
 next-env.d.ts
+.audit-archive

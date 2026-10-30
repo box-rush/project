@@ -71,6 +71,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const ctx = createRuntime();
   let lastReconcile = 0;
   let lastDaily = "";
+  let lastArchive = 0;
+  const { LocalDirStore, S3ObjectLockStore, archiveAuditBatch } = await import("./archive");
+  const store = process.env.AUDIT_ARCHIVE_BUCKET ? new S3ObjectLockStore(process.env.AUDIT_ARCHIVE_BUCKET) : new LocalDirStore(process.env.AUDIT_ARCHIVE_DIR ?? ".audit-archive");
   console.log("box-rush worker started");
   for (;;) {
     try {
@@ -84,6 +87,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (day !== lastDaily && new Date(now + 9 * 3600_000).getUTCHours() >= 3) {
         await dailySweeps(ctx);
         lastDaily = day;
+      }
+      if (now - lastArchive > 3600_000) {
+        await archiveAuditBatch(ctx, store); // T7 hourly
+        lastArchive = now;
       }
       await tick(ctx);
     } catch (e) {

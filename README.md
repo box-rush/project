@@ -45,6 +45,17 @@ python3 apps/web/public/bx_shuffle_v1.py record.json   # offline verifier for a 
 | Snapshot immutability | DB trigger; snapshot hash published |
 | Audit (T7) | append-only `audit_log` with hash chain, verified by `verifyAuditChain` |
 
+## External services
+| Service | Status | Env |
+|---|---|---|
+| Stripe (T6): PaymentIntents + 3DS, customers, SetupIntent card saving, off-session charge (X13), refunds, webhook | implemented, untested against live Stripe (needs keys + business review R14) | `PAYMENT_PROVIDER=stripe`, `STRIPE_*` |
+| Amazon SES (T5) | implemented | `EMAIL_PROVIDER=ses`, `EMAIL_FROM` |
+| LINE Messaging API push (T5) | implemented | `LINE_PROVIDER=line`, `LINE_CHANNEL_ACCESS_TOKEN` |
+| Twilio SMS (T10 fallback) + failover wrapper | implemented | `SMS_PROVIDER=twilio`, `TWILIO_*` |
+| KDDI Message Cast (T10 primary) | **not implemented** — needs the API spec from the contract; `SMS_PROVIDER=kddi` refuses to start | — |
+| S3 Object Lock audit archive (T7) | implemented, hourly in the worker | `AUDIT_ARCHIVE_BUCKET` |
+| Yamato B2クラウド (T14), Amazon IVS + OBS station pipeline (T2) | not implemented (tracking / delivery is a staff action; segments come via `ingestSegment`) | — |
+
 ## Not in this repository yet
-Infrastructure as code (SST/AWS), real Stripe / SES / LINE / KDDI / Yamato B2 / IVS integrations beyond adapters,
-station hardware pipeline (OBS → IVS) and archive to S3 Object Lock. Legal texts are placeholders (legal items on hold, 2026-10-15).
+Infrastructure as code (SST/AWS), the integrations marked above, Sentry / CloudWatch / WAF / Turnstile (T17, T18).
+Legal texts are placeholders (legal items on hold, 2026-10-15).

@@ -80,6 +80,8 @@ export const users = pgTable(
     firstTouch: jsonb("first_touch").$type<Record<string, string>>(),
     lastTouch: jsonb("last_touch").$type<Record<string, string>>(),
     lineUserId: text("line_user_id"),
+    /** PSP customer reference (Stripe customer id). Card data itself never touches our DB (F1.4). */
+    pspCustomerRef: text("psp_customer_ref"),
     notifyMarketing: boolean("notify_marketing").notNull().default(false),
     notifyLine: boolean("notify_line").notNull().default(true),
     deletedAt: ts("deleted_at"),
@@ -755,6 +757,17 @@ export const auditLog = pgTable(
   },
   (t) => [index("audit_entity_idx").on(t.entity, t.entityId)],
 );
+
+/** T7: each hourly batch of the audit log exported to immutable storage (S3 Object Lock in production). */
+export const auditArchives = pgTable("audit_archives", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  seqFrom: integer("seq_from").notNull(),
+  seqTo: integer("seq_to").notNull().unique(),
+  headHash: text("head_hash").notNull(),
+  objectKey: text("object_key").notNull(),
+  sha256: text("sha256").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
 
 /** T13 job queue: state change and its next job are written in the same transaction. */
 export const jobs = pgTable(

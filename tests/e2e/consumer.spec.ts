@@ -71,11 +71,24 @@ test("public verification recomputes the draw in the browser and detects tamperi
 });
 
 test("demo user ships stored cards in one parcel with a free-shipping coupon", async ({ page }) => {
+  // fixture: a fresh platform-granted coupon so the test does not depend on earlier runs
+  const c = new pg.Client({ connectionString: DB });
+  await c.connect();
+  await c.query(
+    "INSERT INTO coupons (id, user_id, reason, issued_at, expires_at) SELECT gen_random_uuid()::text, id, 'E2E', now(), now() + interval '30 days' FROM users WHERE email = 'demo@boxrush.local'",
+  );
+  await c.end();
   await page.goto("/login");
   await page.getByLabel("メールアドレス").fill("demo@boxrush.local");
   await page.getByLabel("パスワード").fill("boxrush-demo");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+
+  // F1.4: card setup through the PSP (mock confirms with a test card); only brand / last4 are stored
+  await page.goto("/payment-methods");
+  const before = await page.getByText("•••• 4242").count();
+  await page.getByRole("button", { name: "カードを追加" }).click();
+  await expect(page.getByText("•••• 4242")).toHaveCount(before + 1);
 
   await page.goto("/collection");
   await noForbiddenWording(page);
@@ -85,7 +98,7 @@ test("demo user ships stored cards in one parcel with a free-shipping coupon", a
   for (let i = 0; i < 3; i++) await boxes.nth(i).check();
   await page.getByRole("button", { name: "まとめて発送" }).click();
   await expect(page.getByRole("heading", { name: "発送申請" })).toBeVisible();
-  await page.locator("select").selectOption({ index: 1 });
+  await page.locator("select").selectOption({ index: 1 }, { timeout: 10_000 });
   await page.getByRole("button", { name: "発送を申請する" }).click();
   await expect(page.getByRole("heading", { name: /発送詳細/ })).toBeVisible();
 });
@@ -96,4 +109,15 @@ test("result page links every card to its recording timestamp; video page lets o
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.getByLabel("元映像のみ表示")).toBeVisible(); // UR6
+});
+
+test("F26.6: a landing with utm parameters is recorded as a first-party event", async ({ page }) => {
+  const campaign = `e2e-${Date.now()}`;
+  await page.goto(`/?utm_source=e2e&utm_campaign=${campaign}`);
+  const c = new pg.Client({ connectionString: DB });
+  await c.connect();
+  await expect
+    .poll(async () => (await c.query("SELECT count(*)::int AS n FROM events WHERE name = 'landing' AND props->>'utm_campaign' = $1", [campaign])).rows[0].n)
+    .toBe(1);
+  await c.end();
 });

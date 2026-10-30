@@ -4,6 +4,8 @@
  */
 export interface CreatePaymentInput {
   purpose: "ORDER" | "SHIPMENT";
+  /** PSP customer, so the card can be reused later (forced shipment, X13) */
+  customerRef?: string | null;
   referenceId: string;
   userId: string;
   amount: number;
@@ -18,7 +20,11 @@ export interface PaymentProvider {
   /** Refund to the original payment path only. */
   refund(input: { ref: string; amount: number; idempotencyKey: string }): Promise<{ refundRef: string }>;
   /** Off-session charge of a saved method (forced shipment, X13). */
-  chargeSaved(input: { userId: string; methodRef: string; amount: number; idempotencyKey: string; description: string }): Promise<{ ok: true; ref: string } | { ok: false; error: string }>;
+  chargeSaved(input: { userId: string; customerRef: string | null; methodRef: string; amount: number; idempotencyKey: string; description: string }): Promise<{ ok: true; ref: string } | { ok: false; error: string }>;
+  /** F1.4: customer + card setup; only the PSP keeps card data. */
+  createCustomer(input: { userId: string; email: string }): Promise<{ customerRef: string }>;
+  createCardSetup(input: { customerRef: string }): Promise<{ clientSecret: string | null; setupRef: string }>;
+  describeMethod(methodRef: string): Promise<{ brand: string; last4: string; expMonth: number; expYear: number; customerRef: string | null }>;
 }
 
 /** Normalised webhook event. */
@@ -63,7 +69,25 @@ export class MockPaymentProvider implements PaymentProvider {
     this.refunds.push({ ref: input.ref, amount: input.amount, key: input.idempotencyKey });
     return { refundRef: `re_${input.idempotencyKey}` };
   }
-  async chargeSaved(input: { userId: string; methodRef: string; amount: number; idempotencyKey: string; description: string }) {
+  readonly customers = new Map<string, string>();
+  readonly methods = new Map<string, { brand: string; last4: string; expMonth: number; expYear: number; customerRef: string }>();
+  async createCustomer(input: { userId: string; email: string }) {
+    const ref = `mock_cus_${input.userId.slice(0, 8)}_${++this.seq}`;
+    this.customers.set(ref, input.userId);
+    return { customerRef: ref };
+  }
+  async createCardSetup(input: { customerRef: string }) {
+    const setupRef = `mock_seti_${++this.seq}`;
+    // the mock "confirms" immediately with a test card
+    this.methods.set(`pm_${setupRef}`, { brand: "visa", last4: "4242", expMonth: 12, expYear: 2030, customerRef: input.customerRef });
+    return { clientSecret: `${setupRef}_secret`, setupRef };
+  }
+  async describeMethod(methodRef: string) {
+    const m = this.methods.get(methodRef);
+    if (!m) throw new Error(`unknown method ${methodRef}`);
+    return m;
+  }
+  async chargeSaved(input: { userId: string; customerRef: string | null; methodRef: string; amount: number; idempotencyKey: string; description: string }) {
     if (this.declineSaved) return { ok: false as const, error: "card_declined" };
     const ref = `mock_off_${++this.seq}`;
     this.payments.set(ref, {

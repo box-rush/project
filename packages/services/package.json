@@ -16,6 +16,8 @@
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1160.0",
+    "@aws-sdk/client-sesv2": "^3.1160.0",
     "@boxrush/core": "workspace:*",
     "@boxrush/db": "workspace:*",
     "stripe": "^18.0.0",

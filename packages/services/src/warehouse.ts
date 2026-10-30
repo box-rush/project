@@ -9,6 +9,7 @@ import { lockLottery, transition } from "./lotteries";
 import { notify } from "./notifications";
 import { requireRole, staffActor, userActor, type StaffPrincipal } from "./principals";
 import { recordEvent } from "./analytics";
+import { paymentCustomer } from "./paymentCustomer";
 
 /** F22.1: attributed cards are put away into the holder's location → lottery FULFILLING. */
 export async function putAway(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
@@ -70,7 +71,7 @@ export async function requestShipment(ctx: Ctx, userId: string, input: { itemIds
   });
   let clientSecret: string | null = null;
   if (quote.payable > 0) {
-    const pay = await ctx.payments.createPayment({ purpose: "SHIPMENT", referenceId: shipment.id, userId, amount: quote.payable, description: `BOXラッシュ 送料`, idempotencyKey: `shipment_${shipment.id}` });
+    const pay = await ctx.payments.createPayment({ customerRef: await paymentCustomer(ctx, userId), purpose: "SHIPMENT", referenceId: shipment.id, userId, amount: quote.payable, description: `BOXラッシュ 送料`, idempotencyKey: `shipment_${shipment.id}` });
     await ctx.db.update(shipments).set({ paymentRef: pay.ref }).where(eq(shipments.id, shipment.id));
     clientSecret = pay.clientSecret;
     shipment.paymentRef = pay.ref;
@@ -220,7 +221,7 @@ export async function forcedCharge(ctx: Ctx, shipmentId: string) {
   const [pm] = await ctx.db.select().from(paymentMethods).where(and(eq(paymentMethods.userId, s.userId), isNull(paymentMethods.deletedAt))).orderBy(sql`is_default DESC`).limit(1);
   const attempt = s.chargeAttempts + 1;
   const res = pm
-    ? await ctx.payments.chargeSaved({ userId: s.userId, methodRef: pm.providerRef, amount: s.payable, idempotencyKey: `forced_${s.id}_${attempt}`, description: "BOXラッシュ 送料（保管期限）" })
+    ? await ctx.payments.chargeSaved({ userId: s.userId, customerRef: await paymentCustomer(ctx, s.userId), methodRef: pm.providerRef, amount: s.payable, idempotencyKey: `forced_${s.id}_${attempt}`, description: "BOXラッシュ 送料（保管期限）" })
     : ({ ok: false, error: "no_payment_method" } as const);
   await ctx.db.transaction(async (tx) => {
     if (res.ok) {

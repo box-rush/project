@@ -244,7 +244,9 @@
     "publicTitle": "公开验证",
     "publicIntro": "输入场次编号，即可查看开盒记录的公开页面与验证结果。无需登录。",
     "record": "开盒记录",
-    "tamper": "篡改测试（替换一处后验证）"
+    "tamper": "篡改测试（替换一处后验证）",
+    "share": "分享此记录",
+    "shareCopied": "已复制链接"
   },
   "collection": {
     "title": "仓库",
@@ -372,7 +374,6 @@
     "title": "支付方式",
     "note": "银行卡信息由支付服务商（Stripe）保管，不会保存在 BOXラッシュ。",
     "add": "添加银行卡",
-    "testAdd": "添加测试卡（开发环境）",
     "expires": "有效期 {m}/{y}"
   },
   "coupons": {

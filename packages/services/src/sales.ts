@@ -10,6 +10,7 @@ import { notify } from "./notifications";
 import { userActor } from "./principals";
 import { scheduleOrderRefund } from "./refunds";
 import { recordEvent } from "./analytics";
+import { paymentCustomer } from "./paymentCustomer";
 
 export async function getLimits(db: DbOrTx, userId: string): Promise<SpendingLimits> {
   const [row] = await db.select().from(spendingLimits).where(eq(spendingLimits.userId, userId));
@@ -132,6 +133,7 @@ export async function holdSlots(ctx: Ctx, userId: string, lotteryId: string, cou
   });
 
   const pay = await ctx.payments.createPayment({
+    customerRef: await paymentCustomer(ctx, userId),
     purpose: "ORDER",
     referenceId: res.order.id,
     userId,

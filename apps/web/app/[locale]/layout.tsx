@@ -6,6 +6,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Noto_Sans_JP, JetBrains_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { Header, BottomTabs } from "@/components/Nav";
+import { LandingBeacon } from "@/components/LandingBeacon";
 
 const noto = Noto_Sans_JP({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-noto", display: "swap", preload: false });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-jb", display: "swap", preload: false });
@@ -33,6 +34,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
           <Header />
           <main className="mx-auto w-full max-w-[1200px] px-4 pb-28 pt-4 md:px-6 lg:pb-12">{children}</main>
           <BottomTabs />
+          <LandingBeacon />
         </NextIntlClientProvider>
       </body>
     </html>

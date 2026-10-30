@@ -5,6 +5,7 @@ import { Empty, Jst, PageHeader, StatusBadge } from "@/components/ui";
 import { jstMonth } from "@/lib/jst";
 import { ctx, requirePageRole } from "@/lib/session";
 import { MonthPicker } from "../MonthPicker";
+import { EvidenceForm } from "./EvidenceForm";
 
 /** O18 / F25: escrow, settlement (⚠ PD3 pending counsel), reconciliation, coupon cost. No P/L per lottery (UR2). */
 export default async function Finance({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
@@ -46,6 +47,11 @@ export default async function Finance({ searchParams }: { searchParams: Promise<
         <MonthPicker month={month} action="/ops/finance" />
       </PageHeader>
       <p className="mb-3 text-xs text-warning">{t("pd3")}</p>
+      <section className="card mb-5 space-y-2 p-4">
+        <h2 className="h2">{t("evidenceTitle")}</h2>
+        <p className="text-xs text-ink2">{t("evidenceHelp")}</p>
+        <EvidenceForm />
+      </section>
       <div className="grid grid-cols-2 gap-5">
         <section className="card p-0">
           <h2 className="h2 px-4 pt-3">{t("escrow")}</h2>

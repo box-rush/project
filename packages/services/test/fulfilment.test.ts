@@ -147,3 +147,21 @@ describe("staff auth (T10): password + mandatory TOTP", () => {
     expect((await staffFromToken(ctx, token))?.roles).toEqual(["REVIEWER"]);
   });
 });
+
+describe("F1.4 card setup through the PSP", () => {
+  it("creates one PSP customer, saves only display data, rejects another customer's card", async () => {
+    const { startCardSetup, saveConfirmedCard, listPaymentMethods, paymentCustomer } = await import("../src");
+    const clock = new Clock(JST(2026, 11, 13, 12));
+    const { ctx, payments } = makeCtx(clock);
+    const u = await makeUser(ctx.db);
+    const other = await makeUser(ctx.db);
+    const { setupRef } = await startCardSetup(ctx, u);
+    await saveConfirmedCard(ctx, u, `pm_${setupRef}`);
+    expect(await paymentCustomer(ctx, u)).toBe(await paymentCustomer(ctx, u));
+    expect(payments.customers.size).toBe(1);
+    const [pm] = await listPaymentMethods(ctx, u);
+    expect(pm).toMatchObject({ brand: "visa", last4: "4242", providerRef: `pm_${setupRef}`, isDefault: true });
+    const s2 = await startCardSetup(ctx, other);
+    await expect(saveConfirmedCard(ctx, u, `pm_${s2.setupRef}`)).rejects.toMatchObject({ code: "INVALID_CARD" });
+  });
+});

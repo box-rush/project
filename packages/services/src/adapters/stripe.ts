@@ -12,13 +12,12 @@ export class StripePaymentProvider implements PaymentProvider {
   constructor(
     secretKey: string,
     private readonly webhookSecret: string,
-    private readonly customerFor: (userId: string) => Promise<string | null>,
   ) {
     this.stripe = new Stripe(secretKey);
   }
 
   async createPayment(input: CreatePaymentInput) {
-    const customer = (await this.customerFor(input.userId)) ?? undefined;
+    const customer = input.customerRef ?? undefined;
     const pi = await this.stripe.paymentIntents.create(
       {
         amount: input.amount,
@@ -41,9 +40,27 @@ export class StripePaymentProvider implements PaymentProvider {
     const r = await this.stripe.refunds.create({ payment_intent: input.ref, amount: input.amount }, { idempotencyKey: input.idempotencyKey });
     return { refundRef: r.id };
   }
-  async chargeSaved(input: { userId: string; methodRef: string; amount: number; idempotencyKey: string; description: string }) {
+  async createCustomer(input: { userId: string; email: string }) {
+    const c = await this.stripe.customers.create({ email: input.email, metadata: { userId: input.userId } }, { idempotencyKey: `customer_${input.userId}` });
+    return { customerRef: c.id };
+  }
+  async createCardSetup(input: { customerRef: string }) {
+    const si = await this.stripe.setupIntents.create({
+      customer: input.customerRef,
+      payment_method_types: ["card"],
+      usage: "off_session",
+      payment_method_options: { card: { request_three_d_secure: "any" } },
+    });
+    return { clientSecret: si.client_secret, setupRef: si.id };
+  }
+  async describeMethod(methodRef: string) {
+    const pm = await this.stripe.paymentMethods.retrieve(methodRef);
+    if (!pm.card) throw new Error("not a card");
+    return { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year, customerRef: typeof pm.customer === "string" ? pm.customer : (pm.customer?.id ?? null) };
+  }
+  async chargeSaved(input: { userId: string; customerRef: string | null; methodRef: string; amount: number; idempotencyKey: string; description: string }) {
     try {
-      const customer = (await this.customerFor(input.userId)) ?? undefined;
+      const customer = input.customerRef ?? undefined;
       const pi = await this.stripe.paymentIntents.create(
         { amount: input.amount, currency: "jpy", customer, payment_method: input.methodRef, off_session: true, confirm: true, description: input.description },
         { idempotencyKey: input.idempotencyKey },

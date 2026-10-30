@@ -28,4 +28,16 @@ test("staff login requires TOTP; every back-office page renders for admin, none 
     await expect(page.locator("body"), p).not.toContainText(/再抽選|抽選を実行|動画をアップロード/);
   }
   expect(errors).toEqual([]);
+
+  // P8: evidence pack for a seeded paid order
+  const pg = await import("pg");
+  const c = new pg.default.Client({ connectionString: process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" });
+  await c.connect();
+  const { rows } = await c.query("SELECT payment_ref FROM orders WHERE status = 'PAID' AND payment_ref IS NOT NULL LIMIT 1");
+  await c.end();
+  const res = await page.request.get(`${ADMIN}/api/disputes/${rows[0].payment_ref}`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.packHash).toMatch(/^[0-9a-f]{64}$/);
+  expect(body.pack.auditTrail.length).toBeGreaterThan(0);
 });

@@ -24,7 +24,7 @@ const walk = (dir, exts, out = []) => {
 
 // 1. forbidden UI wording (ja / zh-Hans / en)
 const FORBIDDEN = [
-  /ポイント/, /残高/, /チャージ/, /キャッシュアウト/, /出金/, /買取/, /買い取/, /期待値/, /還元率/, /ガチャ/, /当たり確率/, /大当たり/,
+  /ポイント/, /残高/, /チャージ(?!バック)/, /キャッシュアウト/, /出金/, /買取/, /買い取/, /期待値/, /還元率/, /ガチャ/, /当たり確率/, /大当たり/,
   /积分/, /余额/, /充值/, /提现/, /回收/, /期望值/,
   /\bpoints?\b/i, /\bbalance\b/i, /\btop-?up\b/i, /\bcash[ -]?out\b/i, /\bwallet\b/i, /\bsell[ -]?back\b/i, /\bexpected value\b/i, /\bjackpot\b/i,
 ];

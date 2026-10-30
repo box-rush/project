@@ -3,7 +3,7 @@ import { listPaymentMethods } from "@boxrush/services";
 import { getCtx } from "@/lib/ctx";
 import { requireUser } from "@/lib/guard";
 import { PageTitle } from "@/components/ui";
-import { CardActions } from "./CardActions";
+import { AddCard, RemoveCard } from "./CardActions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +25,11 @@ export default async function PaymentMethodsPage({ params }: { params: Promise<{
             <span className="font-mono">•••• {m.last4}</span>
             <span className="text-ink-2">{t("paymentMethods.expires", { m: m.expMonth, y: m.expYear })}</span>
             {m.isDefault && <span className="chip border-primary text-primary">{t("common.default")}</span>}
-            <CardActions removeId={m.id} label={t("common.delete")} />
+            <RemoveCard id={m.id} label={t("common.delete")} />
           </li>
         ))}
       </ul>
-      {process.env.PAYMENT_PROVIDER !== "stripe" && <CardActions addLabel={t("paymentMethods.testAdd")} />}
+      <AddCard publishableKey={process.env.PAYMENT_PROVIDER === "stripe" ? (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null) : null} />
     </div>
   );
 }

@@ -929,7 +929,12 @@
       "refund_SHIPMENT": "返金（送料）",
       "shipping_paid": "送料（ユーザー負担）",
       "shipping_platform_advanced": "送料（平台立替）"
-    }
+    },
+    "evidenceTitle": "チャージバック証拠パック（P8）",
+    "evidenceHelp": "注文ID または Stripe の PaymentIntent ID から、注文・ルール・抽選・カードの録画位置・発送・監査ログをまとめた JSON をダウンロードします（出力は監査ログに記録されます）。",
+    "evidenceOrder": "注文ID / PaymentIntent ID",
+    "evidencePlaceholder": "pi_… または 注文ID",
+    "evidenceDownload": "ダウンロード"
   },
   "audit": {
     "title": "監査ログ",

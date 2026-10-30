@@ -929,7 +929,12 @@
       "refund_SHIPMENT": "Refunds (shipping)",
       "shipping_paid": "Shipping paid by users",
       "shipping_platform_advanced": "Shipping advanced by platform"
-    }
+    },
+    "evidenceTitle": "Chargeback evidence pack (P8)",
+    "evidenceHelp": "Download a JSON bundle (order, rules, draw, card recording timestamps, shipping, audit trail) by order ID or Stripe PaymentIntent ID. Exports are audited.",
+    "evidenceOrder": "Order ID / PaymentIntent ID",
+    "evidencePlaceholder": "pi_… or order ID",
+    "evidenceDownload": "Download"
   },
   "audit": {
     "title": "Audit log",

@@ -244,7 +244,9 @@
     "publicTitle": "Public verification",
     "publicIntro": "Enter a round number to see the public opening record and its verification. No login is required.",
     "record": "Opening record",
-    "tamper": "Tamper test (swap one item and verify)"
+    "tamper": "Tamper test (swap one item and verify)",
+    "share": "Share this record",
+    "shareCopied": "Link copied"
   },
   "collection": {
     "title": "Collection",
@@ -372,7 +374,6 @@
     "title": "Payment methods",
     "note": "Card details are stored by the payment processor (Stripe) and are not saved by BOXラッシュ.",
     "add": "Add a card",
-    "testAdd": "Add a test card (development)",
     "expires": "Expires {m}/{y}"
   },
   "coupons": {

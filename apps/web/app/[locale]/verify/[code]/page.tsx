@@ -8,6 +8,7 @@ import { Link } from "@/i18n/routing";
 import { Hash } from "@/components/Hash";
 import { Notice, PageTitle, Section, SelfOperatedBadge, StatusBadge } from "@/components/ui";
 import { Verifier } from "./Verifier";
+import { ShareButton } from "@/components/ShareButton";
 
 export const revalidate = 30;
 
@@ -85,6 +86,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ locale:
         <Notice>{t("verify.notYet")}</Notice>
       )}
       <div className="flex flex-wrap gap-2">
+        <ShareButton path={`/verify/${rec.lottery.code}`} />
         <a href={`/api/records/${rec.lottery.code}`} className="btn btn-ghost" download={`${rec.lottery.code}.json`}>
           JSON
         </a>

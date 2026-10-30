@@ -15,6 +15,20 @@
       "when": 1793357175223,
       "tag": "0001_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793370519800,
+      "tag": "0002_psp_customer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793370696939,
+      "tag": "0003_audit_archives",
+      "breakpoints": true
     }
   ]
 }

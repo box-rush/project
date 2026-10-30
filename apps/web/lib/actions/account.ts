@@ -1,6 +1,6 @@
 "use server";
 import { cookies } from "next/headers";
-import { changeLimits, completeOnboarding, deleteAccount, deleteAddress, recordTouch, redeemCode, upsertAddress, updatePreferences, addPaymentMethod, removePaymentMethod, markNotificationsRead, createTicket, replyTicket, requestShipment, isPhoneOnHold, DomainError, MockPaymentProvider } from "@boxrush/services";
+import { changeLimits, completeOnboarding, deleteAccount, deleteAddress, recordTouch, redeemCode, upsertAddress, updatePreferences, removePaymentMethod, startCardSetup, saveConfirmedCard, recordEvent, markNotificationsRead, createTicket, replyTicket, requestShipment, isPhoneOnHold, DomainError } from "@boxrush/services";
 import { eq, users } from "@boxrush/db";
 import { getCtx } from "@/lib/ctx";
 import { getSessionUser } from "@/lib/session";
@@ -67,14 +67,28 @@ export async function removeAddress(id: string): Promise<ActionResult> {
   return run(async () => deleteAddress(getCtx(), (await me()).id, id));
 }
 
-/** Dev only: register a mock card (Stripe SetupIntent + Elements in production). */
-export async function addTestCard(): Promise<ActionResult> {
+/** F1.4: start a card setup (Stripe SetupIntent with 3-D Secure). The mock confirms it immediately with a test card. */
+export async function beginCardSetup(): Promise<ActionResult<{ clientSecret: string | null; setupRef: string; mock: boolean }>> {
   return run(async () => {
     const ctx = getCtx();
-    if (ctx.payments.name !== "mock") throw new DomainError("NOT_FOUND");
-    await addPaymentMethod(ctx, (await me()).id, { providerRef: `pm_mock_${Date.now()}`, brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 });
-    return undefined;
+    const r = await startCardSetup(ctx, (await me()).id);
+    return { ...r, mock: ctx.payments.name === "mock" };
   });
+}
+
+/** Called after the PSP confirmed the setup; stores only brand / last4 / expiry. */
+export async function completeCardSetup(methodRef: string): Promise<ActionResult> {
+  return run(async () => saveConfirmedCard(getCtx(), (await me()).id, methodRef));
+}
+
+/** F26.6: first-party landing event (utm / ref), no third-party pixels. */
+export async function trackLanding(params: Record<string, string>): Promise<void> {
+  const allowed = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "ref"];
+  const props = Object.fromEntries(Object.entries(params).filter(([k]) => allowed.includes(k)).map(([k, v]) => [k, String(v).slice(0, 80)]));
+  if (!Object.keys(props).length) return;
+  const u = await getSessionUser();
+  const anon = (await cookies()).get("br_anon")?.value ?? null;
+  await recordEvent(getCtx().db, "landing", { userId: u?.id ?? null, anonId: anon, props });
 }
 
 export async function removeCard(id: string): Promise<ActionResult> {
