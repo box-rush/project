@@ -44,8 +44,8 @@ Migrations must stay backward compatible (§10.12); no deploys from 2 h before a
 - **Separate randomness account (T11, §10.7.3)**: the seed key and randomness service live in the main account here,
   isolated by DB role and KMS key. Moving them to an AWS Organizations member account with an SCP-locked key policy is still to do,
   and so is placing the audit archive bucket in that account.
-- **Container images were not built in CI yet**: the image layout was verified by running the standalone servers and
-  the worker locally, but `docker build` itself has not run (no registry access in the dev environment).
+- **Images are built in CI but not yet pushed or run on AWS**: the `images` job builds all three targets, and the
+  layout was checked locally by running the standalone servers and the worker; a first `sst deploy` is still to do.
 - CDN caching for the public verification pages (pages are rendered per request), WAF + Turnstile (T18),
   CloudWatch alarms / Sentry (T17), AWS Budgets (P11), cross-region copy to Osaka (P12), RDS Proxy.
 - KDDI Message Cast (Twilio is wired meanwhile), Amazon IVS station pipeline (T2), Yamato B2 (T14).
