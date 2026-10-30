@@ -26,6 +26,6 @@ If you find a gap or conflict, fix the doc first (§10.10), then the code.
 | `tools/` | `lint-ur.mjs` (UR wording, hard-coded strings, schema), `check-i18n.mjs` (key parity). |
 
 ## Checks before pushing
-`pnpm ci` (UR lint, i18n, typecheck, unit + integration tests on PostgreSQL) and, for UI changes, `pnpm e2e`.
+`pnpm check` (UR lint, i18n, typecheck, unit + integration tests on PostgreSQL) and, for UI changes, `pnpm e2e`.
 Trust-core changes (randomness, holds, state machine, audit, payment webhook, permissions, auth) need: passing vectors/property tests,
 a written risk note, and are in scope for the pre-launch external review (§10.12).

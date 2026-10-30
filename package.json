@@ -15,7 +15,7 @@
     "dev:web": "pnpm --filter @boxrush/web dev",
     "dev:admin": "pnpm --filter @boxrush/admin dev",
     "worker": "pnpm --filter @boxrush/services worker",
-    "ci": "pnpm lint:ur && pnpm lint:i18n && pnpm typecheck && pnpm test",
+    "check": "pnpm lint:ur && pnpm lint:i18n && pnpm typecheck && pnpm test",
     "e2e": "playwright test",
     "db:reset": "psql postgres://boxrush:boxrush@localhost/postgres -c 'DROP DATABASE IF EXISTS boxrush WITH (FORCE)' -c 'CREATE DATABASE boxrush' && pnpm --filter @boxrush/services seed"
   },

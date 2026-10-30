@@ -28,7 +28,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # UR lint, i18n parity, typecheck, core vectors/property tests, PostgreSQL integration tests
-      - run: pnpm ci
+      - run: pnpm check
       - run: pnpm db:reset
       - run: pnpm --filter @boxrush/web build
       - run: pnpm --filter @boxrush/admin build

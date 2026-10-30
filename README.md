@@ -27,7 +27,7 @@ and the KMS key is `RNG_SEED_KEY`. Production sets `PAYMENT_PROVIDER=stripe`, re
 
 ## Tests
 ```bash
-pnpm ci                         # UR lint, i18n parity, typecheck, core + PostgreSQL integration tests
+pnpm check                      # UR lint, i18n parity, typecheck, core + PostgreSQL integration tests
 pnpm --filter @boxrush/web build && pnpm e2e    # Playwright main-flow smoke
 python3 apps/web/public/bx_shuffle_v1.py record.json   # offline verifier for a public record (/api/records/L0001)
 ```
