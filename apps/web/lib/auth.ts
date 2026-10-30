@@ -1,0 +1,55 @@
+import "server-only";
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { phoneNumber } from "better-auth/plugins";
+import { nextCookies } from "better-auth/next-js";
+import { authAccounts, authSessions, authVerifications, users } from "@boxrush/db";
+import { afterPhoneVerified, recordEvent } from "@boxrush/services";
+import { getCtx } from "./ctx";
+
+/**
+ * T10 Better Auth: email + password, Google, Apple, LINE (enabled when credentials are configured).
+ * F1.1: SMS verification is required before buying; one phone ↔ one account (UNIQUE on users.phone_number).
+ */
+const social: Record<string, { clientId: string; clientSecret: string }> = {};
+for (const p of ["google", "apple", "line"] as const) {
+  const id = process.env[`${p.toUpperCase()}_CLIENT_ID`];
+  const secret = process.env[`${p.toUpperCase()}_CLIENT_SECRET`];
+  if (id && secret) social[p] = { clientId: id, clientSecret: secret };
+}
+
+export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  secret: process.env.BETTER_AUTH_SECRET ?? "dev-only-secret-change-me-dev-only-secret",
+  database: drizzleAdapter(getCtx().db, {
+    provider: "pg",
+    schema: { user: users, session: authSessions, account: authAccounts, verification: authVerifications },
+  }),
+  advanced: { database: { generateId: () => crypto.randomUUID() } },
+  emailAndPassword: { enabled: true, minPasswordLength: 8 },
+  socialProviders: social,
+  rateLimit: { enabled: true, window: 60, max: 30 },
+  plugins: [
+    phoneNumber({
+      otpLength: 6,
+      expiresIn: 300,
+      allowedAttempts: 5,
+      sendOTP: async ({ phoneNumber: phone, code }) => {
+        await getCtx().sms.send(phone, `【BOXラッシュ】認証コード ${code}（5分間有効）`);
+      },
+      callbackOnVerification: async ({ user }) => {
+        await afterPhoneVerified(getCtx(), user.id);
+      },
+    }),
+    nextCookies(),
+  ],
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await recordEvent(getCtx().db, "signup", { userId: user.id });
+        },
+      },
+    },
+  },
+});

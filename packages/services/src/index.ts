@@ -29,3 +29,4 @@ export * from "./adapters/payments";
 export * from "./adapters/keys";
 export * from "./adapters/messaging";
 export { StripePaymentProvider } from "./adapters/stripe";
+export * from "./admin";

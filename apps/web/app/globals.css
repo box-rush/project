@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/* §9.2 design tokens (light + dark) */
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --text-2: #6b6b6b;
+  --border: #e6e4dd;
+  --primary: #3b3fd8;
+  --primary-fg: #ffffff;
+  --trust: #0f9d8a;
+  --warning: #d98a00;
+  --error: #d14343;
+  --gold: #c9a227;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111214;
+    --surface: #1a1b1e;
+    --text: #f2f2f2;
+    --text-2: #a0a0a0;
+    --border: #2c2d31;
+    --primary: #6e72f0;
+    --trust: #2fbfa9;
+    --warning: #f0a92a;
+    --error: #ef6b6b;
+    --gold: #d9b84a;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-line: var(--border);
+  --color-primary: var(--primary);
+  --color-trust: var(--trust);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-gold: var(--gold);
+  --font-sans: var(--font-noto), system-ui, sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, monospace;
+  --radius-card: 12px;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+body {
+  font-feature-settings: "tnum";
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+.btn-ghost {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+}

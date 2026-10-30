@@ -1,0 +1,1 @@
+{ "name": "BOXラッシュ", "short_name": "BOXラッシュ", "start_url": "/", "display": "standalone", "background_color": "#FAFAF7", "theme_color": "#3B3FD8", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
