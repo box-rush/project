@@ -17,7 +17,8 @@ export async function loginAction(_: ActionResult | null, fd: FormData): Promise
   let res: Awaited<ReturnType<typeof staffLogin>>;
   try {
     const h = await headers();
-    const client = (h.get("x-forwarded-for") ?? "").split(",")[0]!.trim() || "-";
+    // the ALB appends the real client address; earlier entries are whatever the client sent
+    const client = (h.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "-";
     res = await staffLogin(ctx(), email, password, client);
   } catch (e) {
     return { ok: false, code: domainCode(e) };

@@ -103,7 +103,12 @@ export async function staffVerifyMfa(ctx: Ctx, token: string, code: string) {
   if (sess.mfaVerified) return;
   const reserved = await ctx.db.execute<{ mfa_failures: number; totp_secret: string }>(sql`
     UPDATE staff SET mfa_failures = CASE WHEN mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now} THEN 1 ELSE mfa_failures + 1 END,
-                     mfa_locked_until = CASE WHEN mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now} THEN NULL ELSE mfa_locked_until END
+                     -- the lock expiry is set in the same statement that takes the last attempt, so a crash
+                     -- between reserving and checking can never leave a lock without an expiry
+                     mfa_locked_until = CASE
+                       WHEN (CASE WHEN mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now} THEN 1 ELSE mfa_failures + 1 END) >= ${MAX_MFA_FAILURES}
+                         THEN ${new Date(now.getTime() + MFA_LOCK_MS)}::timestamptz
+                       ELSE NULL END
     WHERE id = ${sess.staffId} AND disabled_at IS NULL
       AND (mfa_locked_until IS NULL OR mfa_locked_until <= ${now})
       AND (mfa_failures < ${MAX_MFA_FAILURES} OR (mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now}))
@@ -112,7 +117,6 @@ export async function staffVerifyMfa(ctx: Ctx, token: string, code: string) {
   if (!row) fail("MFA_LOCKED");
   if (!verifyTotp(row.totp_secret, code, now)) {
     if (row.mfa_failures >= MAX_MFA_FAILURES) {
-      await ctx.db.update(staff).set({ mfaLockedUntil: new Date(now.getTime() + MFA_LOCK_MS) }).where(eq(staff.id, sess.staffId));
       await ctx.db.delete(staffSessions).where(and(eq(staffSessions.staffId, sess.staffId), eq(staffSessions.mfaVerified, false)));
     }
     await audit(ctx.db, { type: "STAFF", id: sess.staffId }, "staff.mfa_failed", "staff", sess.staffId, { failures: row.mfa_failures });

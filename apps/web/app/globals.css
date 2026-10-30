@@ -2,6 +2,8 @@
 
 /* §9.2 design tokens (light + dark) */
 :root {
+  --font-noto: "Noto Sans JP";
+  --font-mono-jb: "JetBrains Mono";
   --bg: #fafaf7;
   --surface: #ffffff;
   --text: #1a1a1a;

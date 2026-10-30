@@ -5,7 +5,7 @@ import {
   approveLottery, confirmAttribution, correctOrAddCard, createStaff, enterCard, expireUnpaidShipment, finalizeAttribution, finishOpening, frozenRecordText,
   getLottery, handlePaymentEvent, holdSlots, paymentForOrder, proposeAttribution, reclaimStaleJobs, requestShipment, runDueJobs, saveDraft, staffLogin,
   staffVerifyMfa, startOpening, submitForReview, upsertAddress, totp, addPaymentMethod, forcedShipmentSweep, forcedCharge, escalatePendingAborts,
-  reportRecordingState, type JobHandler,
+  reportRecordingState, confirmRecordingAbort, reconcile, type JobHandler,
 } from "../src";
 import { Clock, JST, buy, configFor, drain, listedLottery, makeCtx, makeUser, makeWorld, pgRejects } from "./helpers";
 import { collectionItems } from "@boxrush/db";
@@ -180,6 +180,24 @@ describe("review fixes", () => {
     clock.advanceHours(24);
     await escalatePendingAborts(ctx);
     expect((await getLottery(ctx.db, id)).status).toBe("ABORTED");
+  });
+
+  it("an aborted lottery is never escalated again; reconcile and jobs keep running long after", async () => {
+    const clock = new Clock(JST(2026, 12, 8, 12));
+    const { ctx, payments } = makeCtx(clock);
+    const w = await makeWorld(ctx);
+    const id = await listedLottery(ctx, w, { slots: 1 });
+    await buy(ctx, payments, await makeUser(ctx.db), id, 1);
+    await drain(ctx);
+    clock.set((await getLottery(ctx.db, id)).openingAt);
+    await startOpening(ctx, w.station, id, "ST-N3b");
+    await reportRecordingState(ctx, w.station, id, "BOTH_DOWN");
+    await confirmRecordingAbort(ctx, w.reviewer, id);
+    await drain(ctx);
+    expect((await getLottery(ctx.db, id)).status).toBe("REFUNDED");
+    clock.advanceHours(25);
+    await expect(reconcile(ctx)).resolves.toMatchObject({ unconfirmedAborts: 0 });
+    expect(await escalatePendingAborts(ctx)).toEqual({ alerts: 0, errors: 0 });
   });
 
   it("password step is throttled after 10 failures", async () => {

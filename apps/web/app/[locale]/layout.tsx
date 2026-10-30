@@ -3,13 +3,15 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { Noto_Sans_JP, JetBrains_Mono } from "next/font/google";
+// Self-hosted fonts from npm: the build never fetches from Google (deterministic image builds)
+import "@fontsource/noto-sans-jp/400.css";
+import "@fontsource/noto-sans-jp/500.css";
+import "@fontsource/noto-sans-jp/700.css";
+import "@fontsource/jetbrains-mono/400.css";
 import { routing } from "@/i18n/routing";
 import { Header, BottomTabs } from "@/components/Nav";
 import { LandingBeacon } from "@/components/LandingBeacon";
 
-const noto = Noto_Sans_JP({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-noto", display: "swap", preload: false });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-jb", display: "swap", preload: false });
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#3B3FD8" };
 
@@ -28,7 +30,7 @@ export default async function LocaleLayout({ children, params }: { children: Rea
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
   return (
-    <html lang={locale} className={`${noto.variable} ${mono.variable}`}>
+    <html lang={locale}>
       <body className="min-h-dvh font-sans antialiased">
         <NextIntlClientProvider>
           <Header />

@@ -54,6 +54,16 @@ export async function reconcile(ctx: Ctx) {
   return { fixes, reclaimed, unconfirmedAborts, failedJobs: await stuckJobs(ctx.db, now) };
 }
 
+/** Each maintenance step fails on its own: none of them may keep the job queue from running. */
+async function step(name: string, fn: () => Promise<unknown>) {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`[worker] ${name} failed`, e);
+    return undefined;
+  }
+}
+
 export async function dailySweeps(ctx: Ctx) {
   await forcedShipmentSweep(ctx);
   await couponExpiryNotices(ctx);
@@ -80,20 +90,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     try {
       const now = Date.now();
       if (now - lastReconcile > 60_000) {
-        const rec = await reconcile(ctx);
-        if (rec.failedJobs) console.warn(`[alert] ${rec.failedJobs} jobs failing repeatedly or overdue`);
-        if (rec.unconfirmedAborts) console.warn(`[alert] ${rec.unconfirmedAborts} recording-loss reports await a second person`);
-        if (rec.reclaimed) console.warn(`[alert] reclaimed ${rec.reclaimed} jobs left RUNNING by a lost worker`);
         lastReconcile = now;
+        const rec = (await step("reconcile", () => reconcile(ctx))) as Awaited<ReturnType<typeof reconcile>> | undefined;
+        if (rec?.failedJobs) console.warn(`[alert] ${rec.failedJobs} jobs failing repeatedly or overdue`);
+        if (rec?.unconfirmedAborts) console.warn(`[alert] ${rec.unconfirmedAborts} recording-loss reports await a second person`);
+        if (rec?.reclaimed) console.warn(`[alert] reclaimed ${rec.reclaimed} jobs left RUNNING by a lost worker`);
       }
       const day = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
       if (day !== lastDaily && new Date(now + 9 * 3600_000).getUTCHours() >= 3) {
-        await dailySweeps(ctx);
         lastDaily = day;
+        await step("daily sweeps", () => dailySweeps(ctx));
       }
       if (now - lastArchive > 3600_000) {
-        await archiveAuditBatch(ctx, store); // T7 hourly
         lastArchive = now;
+        await step("audit archive", () => archiveAuditBatch(ctx, store)); // T7 hourly
       }
       await tick(ctx);
     } catch (e) {

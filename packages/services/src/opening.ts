@@ -97,14 +97,25 @@ export async function confirmRecordingAbort(ctx: Ctx, p: StaffPrincipal, lottery
  */
 export async function escalatePendingAborts(ctx: Ctx) {
   const now = ctx.now();
-  const pending = await ctx.db.select().from(openingSessions).where(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"));
+  const pending = await ctx.db
+    .select({ lotteryId: openingSessions.lotteryId, requestedAt: openingSessions.abortRequestedAt })
+    .from(openingSessions)
+    .innerJoin(lotteries, eq(lotteries.id, openingSessions.lotteryId))
+    .where(and(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"), eq(lotteries.status, "OPENING")));
   let alerts = 0;
+  let errors = 0;
   for (const s of pending) {
-    const age = now.getTime() - (s.abortRequestedAt?.getTime() ?? now.getTime());
-    if (age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
-    else if (age >= 15 * 60_000) alerts++;
+    const age = now.getTime() - (s.requestedAt?.getTime() ?? now.getTime());
+    try {
+      if (age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
+      else if (age >= 15 * 60_000) alerts++;
+    } catch (e) {
+      // one lottery must never stall the reconcile loop (and with it the whole job queue)
+      errors++;
+      console.error(`[escalatePendingAborts] ${s.lotteryId}`, e);
+    }
   }
-  return { alerts };
+  return { alerts, errors };
 }
 
 async function assertRecordingUsable(tx: DbOrTx, lotteryId: string) {
@@ -118,7 +129,11 @@ export async function abortLottery(ctx: Ctx, actor: Actor, lotteryId: string, re
   await ctx.db.transaction(async (tx) => {
     const lot = await lockLottery(tx, lotteryId);
     await transition(tx, lot, "ABORTED", actor, { abortReason: reason }, now);
-    await tx.update(openingSessions).set({ endedAt: now }).where(eq(openingSessions.lotteryId, lotteryId));
+    // close the session; a pending both-down report is now resolved (it must not be escalated again)
+    await tx
+      .update(openingSessions)
+      .set({ endedAt: now, recordingState: sql`CASE WHEN ${openingSessions.recordingState} = 'BOTH_DOWN_PENDING' THEN 'BOTH_DOWN' ELSE ${openingSessions.recordingState} END` })
+      .where(eq(openingSessions.lotteryId, lotteryId));
     const paid = await tx.select().from(orders).where(and(eq(orders.lotteryId, lotteryId), eq(orders.status, "PAID")));
     for (const o of paid) {
       await scheduleOrderRefund(tx, o, "ABORTED", now);
