@@ -83,6 +83,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let lastReconcile = 0;
   let lastDaily = "";
   let lastArchive = 0;
+  let dailyRetryAt = 0;
   const { LocalDirStore, S3ObjectLockStore, archiveAuditBatch } = await import("./archive");
   const store = process.env.AUDIT_ARCHIVE_BUCKET ? new S3ObjectLockStore(process.env.AUDIT_ARCHIVE_BUCKET) : new LocalDirStore(process.env.AUDIT_ARCHIVE_DIR ?? ".audit-archive");
   console.log("box-rush worker started");
@@ -97,9 +98,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         if (rec?.reclaimed) console.warn(`[alert] reclaimed ${rec.reclaimed} jobs left RUNNING by a lost worker`);
       }
       const day = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
-      if (day !== lastDaily && new Date(now + 9 * 3600_000).getUTCHours() >= 3) {
-        lastDaily = day;
-        await step("daily sweeps", () => dailySweeps(ctx));
+      if (day !== lastDaily && now >= dailyRetryAt && new Date(now + 9 * 3600_000).getUTCHours() >= 3) {
+        // done for the day only on success; on failure retry in 10 minutes (sweeps are idempotent)
+        const ok = (await step("daily sweeps", () => dailySweeps(ctx).then(() => true))) === true;
+        if (ok) lastDaily = day;
+        else dailyRetryAt = now + 10 * 60_000;
       }
       if (now - lastArchive > 3600_000) {
         lastArchive = now;
