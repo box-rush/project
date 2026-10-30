@@ -16,12 +16,12 @@ export async function putAway(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
   const now = ctx.now();
   await ctx.db.transaction(async (tx) => {
     const lot = await lockLottery(tx, lotteryId);
+    await transition(tx, lot, "FULFILLING", staffActor(p), {}, now);
     const items = await tx.select().from(collectionItems).where(eq(collectionItems.lotteryId, lotteryId));
     for (const it of items) {
       const loc = `U-${it.userId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
       await tx.update(collectionItems).set({ locationCode: loc }).where(eq(collectionItems.id, it.id));
     }
-    await transition(tx, lot, "FULFILLING", staffActor(p), {}, now);
     // Storage-expiry reminder 7 days before the free period ends (F11.4), and the forced-shipment sweep (X13)
     await enqueue(tx, "storage.remind", `storage-remind:${lotteryId}`, addDays(now, PARAMS.freeStorageDays - 7), { lotteryId });
   });

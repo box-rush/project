@@ -1,5 +1,5 @@
 import { PARAMS, addMinutes, checkSpending, effectiveLimits, formatYen, startOfJstDay, type SpendingLimits, DEFAULT_LIMITS } from "@boxrush/core";
-import { accountLinks, and, eq, inArray, isNull, lotteries, merchants, or, orders, paymentEvents, slots, spendingLimits, sql, staff, users, type DbOrTx } from "@boxrush/db";
+import { accountLinks, and, eq, inArray, inventoryUnits, isNull, lotteries, merchants, or, orders, paymentEvents, slots, spendingLimits, sql, staff, users, type DbOrTx } from "@boxrush/db";
 import type { PaymentEvent } from "./adapters/payments";
 import { audit, SYSTEM } from "./audit";
 import type { Ctx } from "./context";
@@ -241,6 +241,8 @@ export async function closeSale(ctx: Ctx, lotteryId: string) {
       return;
     }
     await transition(tx, lot, "FAILED", SYSTEM, {}, now);
+    // the box was never opened: subject and guarantee cards go back to stock
+    await tx.update(inventoryUnits).set({ status: "IN_STOCK", lotteryId: null }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.status, "ALLOCATED")));
     const pending = await tx.select().from(orders).where(and(eq(orders.lotteryId, lotteryId), eq(orders.status, "PENDING")));
     for (const o of pending) await tx.update(orders).set({ status: "EXPIRED" }).where(eq(orders.id, o.id));
     await tx.update(slots).set({ state: "AVAILABLE", heldBy: null, heldUntil: null, orderId: null }).where(and(eq(slots.lotteryId, lotteryId), eq(slots.state, "HELD")));

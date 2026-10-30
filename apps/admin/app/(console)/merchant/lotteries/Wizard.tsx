@@ -101,11 +101,11 @@ export function Wizard({
   const seq = useRef(0);
   const set = <K extends keyof WizardInitial>(k: K, v: WizardInitial[K]) => setF((x) => ({ ...x, [k]: v }));
 
-  const product = options.products.find((p) => p.id === f.productId) ?? null;
-  const template = options.templates.find((tp) => tp.productId === f.productId) ?? null;
-  const sealedForProduct = options.sealedUnits.filter((u) => u.productId === f.productId);
-  const chosenGuarantees = options.guaranteeUnits.filter((u) => f.guaranteeUnitIds.includes(u.id));
-  const firstG = chosenGuarantees[0] ?? null;
+  // Derived values are memoized so `raw` (and the live validation it triggers) only changes when the form does.
+  const product = useMemo(() => options.products.find((p) => p.id === f.productId) ?? null, [options.products, f.productId]);
+  const template = useMemo(() => options.templates.find((tp) => tp.productId === f.productId) ?? null, [options.templates, f.productId]);
+  const sealedForProduct = useMemo(() => options.sealedUnits.filter((u) => u.productId === f.productId), [options.sealedUnits, f.productId]);
+  const firstG = useMemo(() => options.guaranteeUnits.find((u) => f.guaranteeUnitIds.includes(u.id)) ?? null, [options.guaranteeUnits, f.guaranteeUnitIds]);
 
   const raw = useMemo(() => {
     const toIso = (v: string) => parseJstLocal(v)?.toISOString() ?? v;
@@ -492,7 +492,8 @@ export function Wizard({
           <ul className="flex flex-col gap-1 text-sm">
             {RULES.map((r) => {
               const hit = (issues ?? []).filter((i) => r.codes.includes(i.code as string) && i.severity === "error");
-              const ok = editable ? issues !== null && hit.length === 0 : true;
+              // With schema errors the config could not be evaluated, so rules are shown as not yet passing.
+              const ok = editable ? issues !== null && schemaErrors.length === 0 && hit.length === 0 : true;
               return (
                 <li key={r.key}>
                   <button type="button" className="flex w-full items-start gap-2 text-left" onClick={() => editable && setStep(r.step)}>

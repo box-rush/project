@@ -1,10 +1,10 @@
-import { and, asc, collectionItems, desc, eq, openedCards, slots, ticketMessages, tickets } from "@boxrush/db";
+import { and, asc, collectionItems, coupons, desc, eq, openedCards, slots, ticketMessages, tickets } from "@boxrush/db";
 import { audit } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
 import { notify } from "./notifications";
 import { requireRole, staffActor, userActor, type StaffPrincipal } from "./principals";
-import { grantCoupon } from "./coupons";
+import { PARAMS, addDays, formatJst } from "@boxrush/core";
 import { buildOpeningRecord } from "./publicRecord";
 
 /** F12.3 inquiry / F8.6 appeal (anchored to the opening record). */
@@ -91,9 +91,14 @@ export async function decideArbitration(ctx: Ctx, p: StaffPrincipal, ticketId: s
     await tx.insert(ticketMessages).values({ ticketId, authorType: "STAFF", authorId: p.id, body: decision.resolution, createdAt: now });
     await notify(tx, t.userId, "ARBITRATION_DECIDED", { code: t.code, resolution: decision.resolution }, `arb:${ticketId}`, now);
     await audit(tx, staffActor(p), "arbitration.decide", "ticket", ticketId, decision, now);
+    if (decision.outcome === "COMPENSATED") {
+      const [c] = await tx.insert(coupons).values({ userId: t.userId, reason: "COMPENSATION", issuedAt: now, expiresAt: addDays(now, PARAMS.couponValidDays), issuedBy: p.id }).returning();
+      await audit(tx, staffActor(p), "coupon.grant", "coupon", c!.id, { userId: t.userId, reason: "COMPENSATION", ticketId }, now);
+      await notify(tx, t.userId, "COUPON_GRANTED", { expiresAt: formatJst(c!.expiresAt) }, `coupon-grant:${c!.id}`, now);
+    }
     return t;
   });
-  if (decision.outcome === "COMPENSATED") await grantCoupon(ctx, p, t.userId, "COMPENSATION");
+  void t;
 }
 
 export async function ticketQueue(ctx: Ctx, p: StaffPrincipal) {

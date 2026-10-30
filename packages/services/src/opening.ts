@@ -64,8 +64,12 @@ export async function ingestSegment(
  */
 export async function reportRecordingState(ctx: Ctx, p: StaffPrincipal, lotteryId: string, state: "CLOUD_OK" | "CLOUD_DOWN" | "BOTH_DOWN") {
   requireRole(p, "STATION");
-  await ctx.db.update(openingSessions).set({ recordingState: state }).where(eq(openingSessions.lotteryId, lotteryId));
-  await audit(ctx.db, staffActor(p), "recording.state", "lottery", lotteryId, { state });
+  await ctx.db.transaction(async (tx) => {
+    const lot = await lockLottery(tx, lotteryId);
+    if (lot.status !== "OPENING") fail("NOT_OPENING");
+    await tx.update(openingSessions).set({ recordingState: state }).where(eq(openingSessions.lotteryId, lotteryId));
+    await audit(tx, staffActor(p), "recording.state", "lottery", lotteryId, { state });
+  });
   if (state === "BOTH_DOWN") await abortLottery(ctx, staffActor(p), lotteryId, "RECORDING_INTERRUPTED");
 }
 

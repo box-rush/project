@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { and, eq, lotteries, orders, refunds, slots, sql, accountLinks } from "@boxrush/db";
+import { and, eq, inventoryUnits, lotteries, orders, refunds, slots, sql, accountLinks } from "@boxrush/db";
 import { getLottery, holdSlots, handlePaymentEvent, expireHold, closeSale, changeLimits, releaseHold, DomainError } from "../src";
 import { Clock, JST, buy, drain, listedLottery, makeCtx, makeUser, makeWorld } from "./helpers";
 
@@ -138,6 +138,8 @@ describe("X1 sale deadline without 100% → FAILED → full refunds → REFUNDED
     const rs = await ctx.db.select().from(refunds).where(sql`${refunds.orderId} IN (SELECT id FROM orders WHERE lottery_id = ${lotteryId})`);
     expect(rs.map((r) => r.status)).toEqual(["SUCCEEDED", "SUCCEEDED"]);
     expect(rs.reduce((x, r) => x + r.amount, 0)).toBe(3 * 1600);
+    const held = await ctx.db.select().from(inventoryUnits).where(eq(inventoryUnits.lotteryId, lotteryId));
+    expect(held).toHaveLength(0); // box and guarantee cards back in stock
     void lotteries;
   });
 
