@@ -1,5 +1,5 @@
 "use server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { staffLogin, staffLogout, staffVerifyMfa } from "@boxrush/services";
 import { ctx, ENROLL_COOKIE, MFA_COOKIE, STAFF_COOKIE } from "@/lib/session";
@@ -16,7 +16,9 @@ export async function loginAction(_: ActionResult | null, fd: FormData): Promise
   const password = String(fd.get("password") ?? "");
   let res: Awaited<ReturnType<typeof staffLogin>>;
   try {
-    res = await staffLogin(ctx(), email, password);
+    const h = await headers();
+    const client = (h.get("x-forwarded-for") ?? "").split(",")[0]!.trim() || "-";
+    res = await staffLogin(ctx(), email, password, client);
   } catch (e) {
     return { ok: false, code: domainCode(e) };
   }

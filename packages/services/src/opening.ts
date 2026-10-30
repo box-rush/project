@@ -91,6 +91,22 @@ export async function confirmRecordingAbort(ctx: Ctx, p: StaffPrincipal, lottery
   await abortLottery(ctx, staffActor(p), lotteryId, "RECORDING_INTERRUPTED");
 }
 
+/**
+ * N3: a both-paths-down report nobody confirms must not leave buyers stuck in OPENING. Reconcile alerts after
+ * 15 minutes and, 24 hours after the report (same grace as PD12), the system confirms the abort and refunds everyone.
+ */
+export async function escalatePendingAborts(ctx: Ctx) {
+  const now = ctx.now();
+  const pending = await ctx.db.select().from(openingSessions).where(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"));
+  let alerts = 0;
+  for (const s of pending) {
+    const age = now.getTime() - (s.abortRequestedAt?.getTime() ?? now.getTime());
+    if (age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
+    else if (age >= 15 * 60_000) alerts++;
+  }
+  return { alerts };
+}
+
 async function assertRecordingUsable(tx: DbOrTx, lotteryId: string) {
   const [s] = await tx.select({ state: openingSessions.recordingState }).from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
   if (s?.state === "BOTH_DOWN_PENDING") fail("RECORDING_INTERRUPTED");

@@ -4,7 +4,8 @@ import { eq, jobs, lotteries, orders, refunds, shipments, slots, sql, staffSessi
 import {
   approveLottery, confirmAttribution, correctOrAddCard, createStaff, enterCard, expireUnpaidShipment, finalizeAttribution, finishOpening, frozenRecordText,
   getLottery, handlePaymentEvent, holdSlots, paymentForOrder, proposeAttribution, reclaimStaleJobs, requestShipment, runDueJobs, saveDraft, staffLogin,
-  staffVerifyMfa, startOpening, submitForReview, upsertAddress, type JobHandler,
+  staffVerifyMfa, startOpening, submitForReview, upsertAddress, totp, addPaymentMethod, forcedShipmentSweep, forcedCharge, escalatePendingAborts,
+  reportRecordingState, type JobHandler,
 } from "../src";
 import { Clock, JST, buy, configFor, drain, listedLottery, makeCtx, makeUser, makeWorld, pgRejects } from "./helpers";
 import { collectionItems } from "@boxrush/db";
@@ -120,14 +121,65 @@ describe("review fixes", () => {
     expect(H(frozen.text)).toBe(frozen.recordHash);
   });
 
-  it("M7: five wrong TOTP codes destroy the half-logged-in session", async () => {
-    const { ctx } = makeCtx(new Clock(new Date()));
+  it("M7: at most 5 TOTP guesses per person per 15 min — across new sessions and parallel requests", async () => {
+    const clock = new Clock(new Date());
+    const { ctx } = makeCtx(clock);
     const email = `mfa${Date.now()}@boxrush.test`;
-    await createStaff(ctx, { email, name: "x", password: "pw-123456", roles: ["CS"] });
+    const { totpSecret } = await createStaff(ctx, { email, name: "x", password: "pw-123456", roles: ["CS"] });
+    const wrong = totp(totpSecret, new Date(clock.now().getTime() + 3600_000)) === "000000" ? "111111" : "000000";
+    // 30 parallel guesses across 6 fresh sessions
+    const tokens = await Promise.all(Array.from({ length: 6 }, () => staffLogin(ctx, email, "pw-123456").then((r) => r.token)));
+    const res = await Promise.allSettled(tokens.flatMap((t) => Array.from({ length: 5 }, () => staffVerifyMfa(ctx, t, wrong))));
+    const codes = res.map((r) => (r as PromiseRejectedResult).reason?.code);
+    expect(codes.filter((c) => c === "INVALID_MFA" || c === "MFA_LOCKED").length + codes.filter((c) => c === "SESSION_EXPIRED").length).toBe(30);
+    // only 5 codes were actually checked
+    const [row] = await ctx.db.execute<{ n: string }>(sql`SELECT count(*)::text AS n FROM audit_log WHERE action = 'staff.mfa_failed' AND data->>'failures' IS NOT NULL AND actor_id = (SELECT id FROM staff WHERE email = ${email})`).then((r) => r.rows);
+    expect(Number(row!.n)).toBe(5);
+    // even the right code is refused while locked; it works again after 15 minutes
     const { token } = await staffLogin(ctx, email, "pw-123456");
-    for (let i = 0; i < 4; i++) await expect(staffVerifyMfa(ctx, token, "000000")).rejects.toMatchObject({ code: "INVALID_MFA" });
-    await expect(staffVerifyMfa(ctx, token, "000000")).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
-    expect(await ctx.db.select().from(staffSessions).where(eq(staffSessions.token, token))).toHaveLength(0);
+    await expect(staffVerifyMfa(ctx, token, totp(totpSecret, clock.now()))).rejects.toMatchObject({ code: "MFA_LOCKED" });
+    clock.advanceMinutes(16);
+    const again = await staffLogin(ctx, email, "pw-123456");
+    await staffVerifyMfa(ctx, again.token, totp(totpSecret, clock.now()));
+    void staffSessions;
+  });
+
+  it("N1: a forced shipment's own charge webhook is not treated as a late payment", async () => {
+    const clock = new Clock(JST(2026, 12, 6, 12));
+    const { ctx, payments } = makeCtx(clock);
+    const w = await makeWorld(ctx);
+    const id = await listedLottery(ctx, w);
+    const u = await makeUser(ctx.db);
+    await ctx.db.insert(collectionItems).values({ userId: u, lotteryId: id, slotNumber: 1, name: "c", rarity: "C", storedSince: clock.now(), freeStorageUntil: JST(2026, 12, 6, 0) });
+    await upsertAddress(ctx, u, { name: "テスト", postalCode: "1000001", prefecture: "東京都", city: "千代田区", line1: "1-1", phone: "0300000000" });
+    await addPaymentMethod(ctx, u, { providerRef: "pm_x", brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 });
+    await forcedShipmentSweep(ctx);
+    const [s] = await ctx.db.select().from(shipments).where(eq(shipments.userId, u));
+    await forcedCharge(ctx, s!.id);
+    const [charged] = await ctx.db.select().from(shipments).where(eq(shipments.id, s!.id));
+    expect(charged!.status).toBe("REQUESTED");
+    // Stripe then delivers payment_intent.succeeded for that charge
+    await handlePaymentEvent(ctx, { id: `evt_forced_${s!.id}`, type: "payment.succeeded", ref: charged!.paymentRef!, amount: 390, purpose: "SHIPMENT", referenceId: s!.id });
+    expect(await ctx.db.select().from(refunds).where(eq(refunds.shipmentId, s!.id))).toHaveLength(0);
+    void payments;
+  });
+
+  it("N3: an unconfirmed recording-loss report is escalated and, after 24h, aborted by the system", async () => {
+    const clock = new Clock(JST(2026, 12, 7, 12));
+    const { ctx, payments } = makeCtx(clock);
+    const w = await makeWorld(ctx);
+    const id = await listedLottery(ctx, w, { slots: 1 });
+    await buy(ctx, payments, await makeUser(ctx.db), id, 1);
+    await drain(ctx);
+    clock.set((await getLottery(ctx.db, id)).openingAt);
+    await startOpening(ctx, w.station, id, "ST-N3");
+    await reportRecordingState(ctx, w.station, id, "BOTH_DOWN");
+    clock.advanceMinutes(20);
+    expect((await escalatePendingAborts(ctx)).alerts).toBeGreaterThanOrEqual(1);
+    expect((await getLottery(ctx.db, id)).status).toBe("OPENING");
+    clock.advanceHours(24);
+    await escalatePendingAborts(ctx);
+    expect((await getLottery(ctx.db, id)).status).toBe("ABORTED");
   });
 
   it("password step is throttled after 10 failures", async () => {

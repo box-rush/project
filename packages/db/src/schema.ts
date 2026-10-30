@@ -210,6 +210,9 @@ export const staff = pgTable("staff", {
   merchantId: text("merchant_id").references(() => merchants.id),
   /** personal phone, used to detect linked consumer accounts (I8, F24.1) */
   phoneNumber: text("phone_number"),
+  /** TOTP attempts counted per person (not per session); locked for 15 min after 5 failures */
+  mfaFailures: integer("mfa_failures").notNull().default(0),
+  mfaLockedUntil: ts("mfa_locked_until"),
   disabledAt: ts("disabled_at"),
   createdAt: createdAt(),
 });
@@ -225,6 +228,17 @@ export const staffSessions = pgTable("staff_sessions", {
   expiresAt: ts("expires_at").notNull(),
   createdAt: createdAt(),
 });
+
+/** Password-step throttle (per address + client), kept out of the audit log so failures cannot flood it. */
+export const staffLoginFailures = pgTable(
+  "staff_login_failures",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    key: text("key").notNull(),
+    at: ts("at").notNull().defaultNow(),
+  },
+  (t) => [index("staff_login_failures_key_at").on(t.key, t.at)],
+);
 
 /**
  * F24.1: consumer accounts linked to a merchant (or to platform staff, merchantId = null → all lotteries).

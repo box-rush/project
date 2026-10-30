@@ -113,14 +113,15 @@ export async function handleShipmentPayment(tx: DbOrTx, ctx: Ctx, evt: PaymentEv
     }
   }
   if (!s) return { unknown: true as const };
-  if (evt.type === "payment.succeeded" && s.status !== "AWAITING_PAYMENT") {
-    // Paid after the request was cancelled (30-min expiry) or paid twice: refund what was captured, to the same card.
+  if (evt.type === "payment.succeeded" && s.status === "CANCELLED") {
+    // Paid after the request was cancelled (30-min expiry): refund what was captured, to the same card.
+    // (A forced shipment's off-session charge is already REQUESTED when its webhook arrives — that is not late.)
     const [r] = await tx.insert(refunds).values({ shipmentId: s.id, userId: s.userId, amount: evt.amount, reason: "SHIPMENT_LATE_PAYMENT", createdAt: ctx.now() }).returning();
     await enqueue(tx, "refund.execute", `refund:${r!.id}`, ctx.now(), { refundId: r!.id });
     await audit(tx, SYSTEM, "shipment.late_payment_refund", "shipment", s.id, { amount: evt.amount, status: s.status }, ctx.now());
     return { shipmentId: s.id, status: "LATE_PAYMENT" as const };
   }
-  if (evt.type !== "payment.succeeded") return { shipmentId: s.id, status: s.status };
+  if (evt.type !== "payment.succeeded" || s.status !== "AWAITING_PAYMENT") return { shipmentId: s.id, status: s.status };
   await tx.update(shipments).set({ status: "REQUESTED" }).where(eq(shipments.id, s.id));
   await tx.update(collectionItems).set({ state: "SHIPPING" }).where(eq(collectionItems.shipmentId, s.id));
   await audit(tx, SYSTEM, "shipment.paid", "shipment", s.id, { amount: evt.amount }, ctx.now());

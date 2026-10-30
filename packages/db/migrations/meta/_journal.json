@@ -50,6 +50,13 @@
       "when": 1793373656749,
       "tag": "0006_db_state_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793374416278,
+      "tag": "0007_staff_auth_hardening",
+      "breakpoints": true
     }
   ]
 }

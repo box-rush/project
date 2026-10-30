@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, sql, staff, staffSessions } from "@boxrush/db";
+import { and, eq, gt, sql, staff, staffLoginFailures, staffSessions } from "@boxrush/db";
 import { audit } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -65,42 +65,64 @@ export async function createStaff(ctx: Ctx, input: { email: string; name: string
 }
 
 const MAX_MFA_FAILURES = 5;
+const MFA_LOCK_MS = 15 * 60_000;
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const MAX_LOGIN_FAILURES = 10;
 
-/** Step 1: password → a session that is NOT yet usable (mfaVerified = false). */
-export async function staffLogin(ctx: Ctx, email: string, password: string) {
+/**
+ * Step 1: password → a session that is NOT yet usable (mfaVerified = false).
+ * Throttled per address + client (IP), so a stranger cannot lock a staff member out from elsewhere.
+ * Failures are kept in their own table, not the audit log (no unauthenticated writes into the audit chain).
+ */
+export async function staffLogin(ctx: Ctx, email: string, password: string, client = "-") {
   const key = email.toLowerCase();
-  // throttle: 10 failed attempts per address in 15 minutes
+  const throttleKey = `${key}|${client}`;
+  const now = ctx.now();
   const recent = await ctx.db.execute<{ c: string }>(
-    sql`SELECT count(*)::text AS c FROM audit_log WHERE action = 'staff.login_failed' AND entity_id = ${key} AND at > ${new Date(ctx.now().getTime() - 15 * 60_000)}`,
+    sql`SELECT count(*)::text AS c FROM staff_login_failures WHERE key = ${throttleKey} AND at > ${new Date(now.getTime() - LOGIN_WINDOW_MS)}`,
   );
-  if (Number(recent.rows[0]?.c ?? 0) >= 10) fail("LOGIN_THROTTLED");
+  if (Number(recent.rows[0]?.c ?? 0) >= MAX_LOGIN_FAILURES) fail("LOGIN_THROTTLED");
   const [s] = await ctx.db.select().from(staff).where(eq(staff.email, key));
   if (!s || s.disabledAt || !verifyPassword(password, s.passwordHash)) {
-    await audit(ctx.db, { type: "SYSTEM", id: null }, "staff.login_failed", "staff_login", key);
+    await ctx.db.insert(staffLoginFailures).values({ key: throttleKey, at: now });
     fail("INVALID_CREDENTIALS");
   }
   const token = randomBytes(32).toString("hex");
-  await ctx.db.insert(staffSessions).values({ token, staffId: s.id, expiresAt: new Date(ctx.now().getTime() + 12 * 3600_000) });
+  await ctx.db.insert(staffSessions).values({ token, staffId: s.id, expiresAt: new Date(now.getTime() + 12 * 3600_000) });
   return { token, needsEnrollment: !s.totpEnrolledAt, totpUri: s.totpEnrolledAt ? null : totpUri(s.totpSecret, s.email) };
 }
 
-/** Step 2: TOTP. */
+/**
+ * Step 2: TOTP. Attempts are counted per staff member and reserved atomically BEFORE the code is checked, so
+ * neither new sessions nor parallel requests get extra guesses: at most 5 codes per 15-minute window.
+ */
 export async function staffVerifyMfa(ctx: Ctx, token: string, code: string) {
-  const [sess] = await ctx.db.select().from(staffSessions).where(and(eq(staffSessions.token, token), gt(staffSessions.expiresAt, ctx.now())));
+  const now = ctx.now();
+  const [sess] = await ctx.db.select().from(staffSessions).where(and(eq(staffSessions.token, token), gt(staffSessions.expiresAt, now)));
   if (!sess) fail("SESSION_EXPIRED");
   if (sess.mfaVerified) return;
-  const [s] = await ctx.db.select().from(staff).where(eq(staff.id, sess.staffId));
-  if (!s || !verifyTotp(s.totpSecret, code, ctx.now())) {
-    // online brute force: 5 wrong codes and the password step must be repeated
-    const failures = sess.mfaFailures + 1;
-    if (failures >= MAX_MFA_FAILURES) await ctx.db.delete(staffSessions).where(eq(staffSessions.token, token));
-    else await ctx.db.update(staffSessions).set({ mfaFailures: failures }).where(eq(staffSessions.token, token));
-    await audit(ctx.db, { type: "STAFF", id: sess.staffId }, "staff.mfa_failed", "staff", sess.staffId, { failures });
-    fail(failures >= MAX_MFA_FAILURES ? "SESSION_EXPIRED" : "INVALID_MFA");
+  const reserved = await ctx.db.execute<{ mfa_failures: number; totp_secret: string }>(sql`
+    UPDATE staff SET mfa_failures = CASE WHEN mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now} THEN 1 ELSE mfa_failures + 1 END,
+                     mfa_locked_until = CASE WHEN mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now} THEN NULL ELSE mfa_locked_until END
+    WHERE id = ${sess.staffId} AND disabled_at IS NULL
+      AND (mfa_locked_until IS NULL OR mfa_locked_until <= ${now})
+      AND (mfa_failures < ${MAX_MFA_FAILURES} OR (mfa_locked_until IS NOT NULL AND mfa_locked_until <= ${now}))
+    RETURNING mfa_failures, totp_secret`);
+  const row = reserved.rows[0];
+  if (!row) fail("MFA_LOCKED");
+  if (!verifyTotp(row.totp_secret, code, now)) {
+    if (row.mfa_failures >= MAX_MFA_FAILURES) {
+      await ctx.db.update(staff).set({ mfaLockedUntil: new Date(now.getTime() + MFA_LOCK_MS) }).where(eq(staff.id, sess.staffId));
+      await ctx.db.delete(staffSessions).where(and(eq(staffSessions.staffId, sess.staffId), eq(staffSessions.mfaVerified, false)));
+    }
+    await audit(ctx.db, { type: "STAFF", id: sess.staffId }, "staff.mfa_failed", "staff", sess.staffId, { failures: row.mfa_failures });
+    fail(row.mfa_failures >= MAX_MFA_FAILURES ? "MFA_LOCKED" : "INVALID_MFA");
   }
+  await ctx.db.update(staff).set({ mfaFailures: 0, mfaLockedUntil: null }).where(eq(staff.id, sess.staffId));
   await ctx.db.update(staffSessions).set({ mfaVerified: true }).where(eq(staffSessions.token, token));
-  if (!s.totpEnrolledAt) await ctx.db.update(staff).set({ totpEnrolledAt: ctx.now() }).where(eq(staff.id, s.id));
-  await audit(ctx.db, { type: "STAFF", id: s.id }, "staff.login", "staff", s.id);
+  const [st] = await ctx.db.select().from(staff).where(eq(staff.id, sess.staffId));
+  if (st && !st.totpEnrolledAt) await ctx.db.update(staff).set({ totpEnrolledAt: now }).where(eq(staff.id, st.id));
+  await audit(ctx.db, { type: "STAFF", id: sess.staffId }, "staff.login", "staff", sess.staffId);
 }
 
 export async function staffFromToken(ctx: Ctx, token: string | undefined | null): Promise<(StaffPrincipal & { email: string; name: string }) | null> {

@@ -217,7 +217,8 @@
     "ACTIVE_LOTTERIES": "There are active lotteries",
     "ON_LIST_CARD_FIXED_SLOT": "An on-list card number can only go to the slot the draw gave it",
     "INVENTORY_UNAVAILABLE": "The box or guarantee cards are already allocated to another lottery",
-    "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later"
+    "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later",
+    "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",

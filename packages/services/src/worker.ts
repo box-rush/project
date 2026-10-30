@@ -4,7 +4,7 @@ import type { Ctx } from "./context";
 import { enqueue, reclaimStaleJobs, runDueJobs, stuckJobs, type JobHandler } from "./jobs";
 import { checkRefunded, closeSale, expireHold } from "./sales";
 import { runDraw } from "./draw";
-import { openingOverdue } from "./opening";
+import { escalatePendingAborts, openingOverdue } from "./opening";
 import { executeRefund } from "./refunds";
 import { expireUnpaidShipment, forcedCharge, forcedShipmentSweep, storageReminder } from "./warehouse";
 import { couponExpiryNotices } from "./coupons";
@@ -50,7 +50,8 @@ export async function reconcile(ctx: Ctx) {
     for (const r of pendingRefunds.rows) await enqueue(tx, "refund.execute", `refund:${r.id}`, now, { refundId: r.id });
   });
   const reclaimed = await reclaimStaleJobs(ctx.db, now);
-  return { fixes, reclaimed, failedJobs: await stuckJobs(ctx.db, now) };
+  const { alerts: unconfirmedAborts } = await escalatePendingAborts(ctx);
+  return { fixes, reclaimed, unconfirmedAborts, failedJobs: await stuckJobs(ctx.db, now) };
 }
 
 export async function dailySweeps(ctx: Ctx) {
@@ -81,6 +82,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (now - lastReconcile > 60_000) {
         const rec = await reconcile(ctx);
         if (rec.failedJobs) console.warn(`[alert] ${rec.failedJobs} jobs failing repeatedly or overdue`);
+        if (rec.unconfirmedAborts) console.warn(`[alert] ${rec.unconfirmedAborts} recording-loss reports await a second person`);
         if (rec.reclaimed) console.warn(`[alert] reclaimed ${rec.reclaimed} jobs left RUNNING by a lost worker`);
         lastReconcile = now;
       }
