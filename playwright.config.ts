@@ -14,11 +14,14 @@ export default defineConfig({
   use: { baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3100", locale: "ja-JP", timezoneId: "Asia/Tokyo" },
   webServer: process.env.E2E_BASE_URL
     ? undefined
-    : {
-        command: "pnpm --filter @boxrush/web exec next start -p 3100",
-        url: "http://localhost:3100",
-        reuseExistingServer: true,
-        timeout: 120_000,
-        env: { PAYMENT_PROVIDER: "mock", BETTER_AUTH_URL: "http://localhost:3100", WEB_BASE_URL: "http://localhost:3100" },
-      },
+    : [
+        {
+          command: "pnpm --filter @boxrush/web exec next start -p 3100",
+          url: "http://localhost:3100",
+          reuseExistingServer: true,
+          timeout: 120_000,
+          env: { PAYMENT_PROVIDER: "mock", BETTER_AUTH_URL: "http://localhost:3100", WEB_BASE_URL: "http://localhost:3100" },
+        },
+        { command: "pnpm --filter @boxrush/admin exec next start -p 3101", url: "http://localhost:3101/login", reuseExistingServer: true, timeout: 120_000 },
+      ],
 });
