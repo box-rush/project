@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { formatJst, formatVideoTs } from "@boxrush/core/format";
 import { ResultMessage } from "@/components/ResultMessage";
 import type { ActionResult } from "@/lib/result";
-import { enterCardAction, finishAction, markerAction, recordingAction, sealAnomalyAction, startOpeningAction, voidLastAction } from "../actions";
+import { enterCardAction, finishAction, markerAction, recordingAction, sealAnomalyAction, startOpeningAction, voidLastAction, confirmAbortAction } from "../actions";
 
 interface Card {
   id: string;
@@ -173,6 +173,21 @@ export function StationConsole({
         <a href={`/ops/attribution/${lottery.id}`} className="btn btn-primary mt-4">
           {t("toAttribution")}
         </a>
+      </div>
+    );
+  }
+
+  // ───── both paths down: frozen until a second person confirms the abort (no continue path) ─────
+  if (session?.recordingState === "BOTH_DOWN_PENDING") {
+    return (
+      <div className="station rounded-xl p-8" data-testid="station-abort-pending">
+        <div className="mx-auto max-w-xl space-y-4 text-center">
+          <p className="text-2xl font-black text-error">{t("abortPendingTitle")}</p>
+          <p className="text-sm text-ink2">{t("abortPendingHelp")}</p>
+          <button className="btn btn-danger" disabled={pending} onClick={() => run(() => confirmAbortAction(lottery.id))}>
+            {t("confirmAbort")}
+          </button>
+        </div>
       </div>
     );
   }

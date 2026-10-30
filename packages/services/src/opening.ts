@@ -29,6 +29,7 @@ export async function addMarker(ctx: Ctx, p: StaffPrincipal, lotteryId: string, 
   requireRole(p, "STATION");
   const lot = await getLottery(ctx.db, lotteryId);
   if (lot.status !== "OPENING") fail("NOT_OPENING");
+  await assertRecordingUsable(ctx.db, lotteryId);
   await ctx.db.transaction(async (tx) => {
     await tx.insert(openingMarkers).values({ lotteryId, kind, label, videoTsSec });
     if (kind === "SEAL_CLOSEUP") await tx.update(openingSessions).set({ sealCloseupAt: ctx.now() }).where(eq(openingSessions.lotteryId, lotteryId));
@@ -60,17 +61,39 @@ export async function ingestSegment(
 
 /**
  * F21.7 / PD19: cloud down → warn and continue (local keeps recording, backfilled later).
- * Both paths down for the same period → the only path is abort (X7). There is no "continue anyway".
+ * Both paths down for the same period → the only outcome is abort (X7); there is no "continue anyway" (§9.7 #11).
+ * Because an abort voids an opening whose cards have already been seen, one person cannot do it alone:
+ * the report freezes the station at once, and a different staff member confirms the abort.
  */
 export async function reportRecordingState(ctx: Ctx, p: StaffPrincipal, lotteryId: string, state: "CLOUD_OK" | "CLOUD_DOWN" | "BOTH_DOWN") {
   requireRole(p, "STATION");
+  const now = ctx.now();
   await ctx.db.transaction(async (tx) => {
     const lot = await lockLottery(tx, lotteryId);
     if (lot.status !== "OPENING") fail("NOT_OPENING");
-    await tx.update(openingSessions).set({ recordingState: state }).where(eq(openingSessions.lotteryId, lotteryId));
-    await audit(tx, staffActor(p), "recording.state", "lottery", lotteryId, { state });
+    const [session] = await tx.select().from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId)).for("update");
+    if (session?.recordingState === "BOTH_DOWN_PENDING") fail("RECORDING_INTERRUPTED");
+    const next = state === "BOTH_DOWN" ? "BOTH_DOWN_PENDING" : state;
+    await tx
+      .update(openingSessions)
+      .set({ recordingState: next, ...(state === "BOTH_DOWN" ? { abortRequestedBy: p.id, abortRequestedAt: now } : {}) })
+      .where(eq(openingSessions.lotteryId, lotteryId));
+    await audit(tx, staffActor(p), state === "BOTH_DOWN" ? "recording.both_down_reported" : "recording.state", "lottery", lotteryId, { state }, now);
   });
-  if (state === "BOTH_DOWN") await abortLottery(ctx, staffActor(p), lotteryId, "RECORDING_INTERRUPTED");
+}
+
+/** Second person confirms the both-paths-down abort (X7). The reporter cannot confirm their own report. */
+export async function confirmRecordingAbort(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
+  requireRole(p, "STATION", "REVIEWER");
+  const [session] = await ctx.db.select().from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
+  if (session?.recordingState !== "BOTH_DOWN_PENDING") fail("NOT_PENDING");
+  if (session.abortRequestedBy === p.id) fail("SELF_APPROVAL");
+  await abortLottery(ctx, staffActor(p), lotteryId, "RECORDING_INTERRUPTED");
+}
+
+async function assertRecordingUsable(tx: DbOrTx, lotteryId: string) {
+  const [s] = await tx.select({ state: openingSessions.recordingState }).from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
+  if (s?.state === "BOTH_DOWN_PENDING") fail("RECORDING_INTERRUPTED");
 }
 
 /** X4 (READY, seal anomaly, no same-lot replacement) / X7 (OPENING, recording lost). Full refunds; reason is public. */
@@ -96,6 +119,8 @@ export async function abortLottery(ctx: Ctx, actor: Actor, lotteryId: string, re
 
 export async function abortForSealAnomaly(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
   requireRole(p, "STATION", "REVIEWER");
+  // X4 applies before opening, once the draw is published (READY)
+  if ((await getLottery(ctx.db, lotteryId)).status !== "READY") fail("NOT_READY");
   await abortLottery(ctx, staffActor(p), lotteryId, "SEAL_ANOMALY");
 }
 
@@ -170,6 +195,7 @@ export async function enterCard(
   return ctx.db.transaction(async (tx) => {
     const lot = await lockLottery(tx, lotteryId);
     if (lot.status !== "OPENING") fail("NOT_OPENING");
+    await assertRecordingUsable(tx, lotteryId);
     const snap = lot.snapshot as Snapshot;
     const numbers = snap.checklist.map((c) => c.number);
     const normalized = normalizeCardInput(input.raw, numbers);
@@ -217,7 +243,7 @@ export async function finishOpening(ctx: Ctx, p: StaffPrincipal, lotteryId: stri
   await ctx.db.transaction(async (tx) => {
     const lot = await lockLottery(tx, lotteryId);
     const [session] = await tx.select().from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
-    if (session?.recordingState === "BOTH_DOWN") fail("RECORDING_INTERRUPTED");
+    if (session?.recordingState === "BOTH_DOWN_PENDING") fail("RECORDING_INTERRUPTED");
     const laborSeconds = session ? Math.round((now.getTime() - session.startedAt.getTime()) / 1000) : null;
     await tx.update(openingSessions).set({ endedAt: now, laborSeconds }).where(eq(openingSessions.lotteryId, lotteryId));
     await transition(tx, lot, "ATTRIBUTING", staffActor(p), { openingEndedAt: now }, now);

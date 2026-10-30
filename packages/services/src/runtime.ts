@@ -47,7 +47,6 @@ function smsSender(console_: SmsSender): SmsSender {
 export function createRuntime(): Ctx {
   if (g.__boxrushCtx) return g.__boxrushCtx;
   const { db } = createDb(process.env.DATABASE_URL);
-  const { db: rngDb } = createDb(process.env.RNG_DATABASE_URL ?? process.env.DATABASE_URL, { max: 2 });
   const messaging = new ConsoleMessaging();
   let payments: PaymentProvider;
   if (process.env.PAYMENT_PROVIDER === "stripe") {
@@ -60,7 +59,13 @@ export function createRuntime(): Ctx {
     payments,
     // lazy: the seed key is resolved on first use, never at import / build time
     get rng() {
-      return (rngService ??= new RandomnessService(rngDb, seedKeys()));
+      if (!rngService) {
+        const url = process.env.RNG_DATABASE_URL ?? (process.env.NODE_ENV === "production" ? undefined : process.env.DATABASE_URL);
+        // T11: the public web service is deployed without the randomness login and must never reach this
+        if (!url) throw new Error("RNG_DATABASE_URL is not configured for this service");
+        rngService = new RandomnessService(createDb(url, { max: 2 }).db, seedKeys());
+      }
+      return rngService;
     },
     email: process.env.EMAIL_PROVIDER === "ses" ? new SesEmailSender(required("EMAIL_FROM"), undefined, process.env.SES_CONFIGURATION_SET) : (messaging as EmailSender),
     line: process.env.LINE_PROVIDER === "line" ? new LineMessagingSender(required("LINE_CHANNEL_ACCESS_TOKEN")) : (messaging as LineSender),

@@ -4,7 +4,9 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { phoneNumber } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { authAccounts, authSessions, authVerifications, users } from "@boxrush/db";
-import { afterPhoneVerified, recordEvent } from "@boxrush/services";
+import { afterPhoneVerified, isPhoneOnHold, recordEvent } from "@boxrush/services";
+
+const JP_MOBILE_E164 = /^\+81[789]0\d{8}$/;
 import { getCtx } from "./ctx";
 
 /**
@@ -31,6 +33,10 @@ export const auth = betterAuth({
   rateLimit: { enabled: true, window: 60, max: 30 },
   plugins: [
     phoneNumber({
+      // Server-side, for every phone endpoint (the UI check is only a convenience):
+      // E.164 Japanese mobile numbers only, so uniqueness (one phone ↔ one account) holds on one canonical form,
+      // and a number released by another account within 90 days goes to manual review (T10).
+      phoneNumberValidator: async (phone) => JP_MOBILE_E164.test(phone) && !(await isPhoneOnHold(getCtx(), phone)),
       otpLength: 6,
       expiresIn: 300,
       allowedAttempts: 5,

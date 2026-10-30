@@ -213,8 +213,14 @@ export async function approveLottery(ctx: Ctx, p: StaffPrincipal, lotteryId: str
       now,
     );
     await tx.insert(slots).values(Array.from({ length: config.totalSlots }, (_, i) => ({ lotteryId, number: i + 1 })));
-    const unitIds = [...config.subjectUnitIds, ...(config.guaranteeCard?.inventoryUnitIds ?? [])];
-    if (unitIds.length) await tx.update(inventoryUnits).set({ status: "ALLOCATED", lotteryId }).where(inArray(inventoryUnits.id, unitIds));
+    // Allocate under row locks: a concurrent approval of another lottery cannot take the same box or cards.
+    const unitIds = [...new Set([...config.subjectUnitIds, ...(config.guaranteeCard?.inventoryUnitIds ?? [])])];
+    if (unitIds.length) {
+      const locked = await tx.select().from(inventoryUnits).where(inArray(inventoryUnits.id, unitIds)).for("update");
+      const free = locked.filter((u) => u.merchantId === lot.merchantId && u.status === "IN_STOCK");
+      if (free.length !== unitIds.length) fail("INVENTORY_UNAVAILABLE", { needed: unitIds.length, available: free.length });
+      await tx.update(inventoryUnits).set({ status: "ALLOCATED", lotteryId }).where(and(inArray(inventoryUnits.id, unitIds), eq(inventoryUnits.status, "IN_STOCK")));
+    }
     await audit(tx, staffActor(p), "lottery.snapshot", "lottery", lotteryId, { snapshotHash, seedCommit: commit }, now);
     await enqueue(tx, "lottery.closeSale", `lottery:${lotteryId}:closeSale`, config.saleEndsAt, { lotteryId });
   });

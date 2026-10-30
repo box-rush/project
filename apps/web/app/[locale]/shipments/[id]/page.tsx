@@ -3,6 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { formatJst, formatYen } from "@boxrush/core/format";
 import { and, collectionItems, eq, shipments } from "@boxrush/db";
 import { getCtx } from "@/lib/ctx";
+import { paymentForShipment } from "@boxrush/services";
+import { StripePay } from "@/components/StripePay";
 import { requireUser } from "@/lib/guard";
 import { PageTitle, Section } from "@/components/ui";
 
@@ -21,6 +23,9 @@ export default async function ShipmentDetail({ params }: { params: Promise<{ loc
   const items = await ctx.db.select().from(collectionItems).where(eq(collectionItems.shipmentId, id));
   const a = s.addressSnapshot as { name: string; postalCode: string; prefecture: string; city: string; line1: string; line2?: string | null };
   const idx = STEPS.indexOf(s.status as (typeof STEPS)[number]);
+  // F9.9: the fee is paid here (Stripe). Unpaid requests are released after 30 minutes.
+  const pk = process.env.PAYMENT_PROVIDER === "stripe" ? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY : undefined;
+  const pay = s.status === "AWAITING_PAYMENT" && !s.forced && pk ? await paymentForShipment(ctx, user.id, s.id) : null;
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <PageTitle>
@@ -34,6 +39,11 @@ export default async function ShipmentDetail({ params }: { params: Promise<{ loc
         ))}
       </ol>
       {s.forced && <p className="chip border-warning text-warning">{t("ship.forced")}</p>}
+      {pay?.clientSecret && pk && (
+        <Section title={t("ship.payable")}>
+          <StripePay publishableKey={pk} clientSecret={pay.clientSecret} returnPath={`/shipments/${s.id}`} />
+        </Section>
+      )}
       <Section title={t("ship.address")}>
         <p className="text-sm">
           {a.name} 〒{a.postalCode} {a.prefecture}

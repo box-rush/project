@@ -1,5 +1,5 @@
 "use server";
-import { abortForSealAnomaly, addMarker, enterCard, fail, finishOpening, reportRecordingState, startOpening, voidLastEntry } from "@boxrush/services";
+import { abortForSealAnomaly, addMarker, confirmRecordingAbort, enterCard, fail, finishOpening, reportRecordingState, startOpening, voidLastEntry } from "@boxrush/services";
 import { act } from "@/lib/action";
 import { ctx } from "@/lib/session";
 
@@ -31,9 +31,13 @@ export async function voidLastAction(lotteryId: string, cardId: string) {
   return act((s) => voidLastEntry(ctx(), s, lotteryId, cardId), { revalidate: paths(lotteryId), message: "voided" });
 }
 
-/** CLOUD_DOWN: warn and continue (local recording keeps running). BOTH_DOWN: the service aborts the lottery (PD19, X7). */
+/** CLOUD_DOWN: warn and continue (local recording keeps running). BOTH_DOWN: station frozen, abort awaits a second person (PD19, X7). */
 export async function recordingAction(lotteryId: string, state: "CLOUD_OK" | "CLOUD_DOWN" | "BOTH_DOWN") {
-  return act((s) => reportRecordingState(ctx(), s, lotteryId, state), { revalidate: paths(lotteryId), message: state === "BOTH_DOWN" ? "aborted" : "saved" });
+  return act((s) => reportRecordingState(ctx(), s, lotteryId, state), { revalidate: paths(lotteryId), message: "saved" });
+}
+
+export async function confirmAbortAction(lotteryId: string) {
+  return act((s) => confirmRecordingAbort(ctx(), s, lotteryId), { revalidate: paths(lotteryId), message: "aborted" });
 }
 
 export async function finishAction(lotteryId: string) {

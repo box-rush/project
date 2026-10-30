@@ -18,7 +18,10 @@ def shuffle(final: str, units: list) -> list:
     return [units[k] for k in arr]
 
 def main(path: str) -> int:
-    rec = json.load(open(path, encoding="utf-8"))
+    raw = open(path, "rb").read()
+    # compare with the x-record-sha256 header of /api/records/<code> (frozen record only)
+    print("record sha256", hashlib.sha256(raw).hexdigest())
+    rec = json.loads(raw.decode("utf-8"))
     seed = rec["draw"]["serverSeed"]
     text = rec["participants"]["text"]
     beacon = rec["draw"].get("beacon") or ""

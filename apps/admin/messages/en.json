@@ -214,7 +214,10 @@
     "BAD_CHECKSUM": "Bad checksum",
     "SHIPMENT_IN_PROGRESS": "A shipment is in progress",
     "STORED_ITEMS_REMAIN": "Stored items remain",
-    "ACTIVE_LOTTERIES": "There are active lotteries"
+    "ACTIVE_LOTTERIES": "There are active lotteries",
+    "ON_LIST_CARD_FIXED_SLOT": "An on-list card number can only go to the slot the draw gave it",
+    "INVENTORY_UNAVAILABLE": "The box or guarantee cards are already allocated to another lottery",
+    "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -709,7 +712,10 @@
     "waiting": "Enter a card number",
     "voidLast": "Void my last entry",
     "finish": "Finish opening",
-    "finishConfirm": "{n} cards entered. Finish and send to attribution?"
+    "finishConfirm": "{n} cards entered. Finish and send to attribution?",
+    "abortPendingTitle": "Both recording paths reported down",
+    "abortPendingHelp": "The station is frozen. Once a different staff member (station or reviewer) confirms, this opening is aborted and fully refunded. It cannot continue.",
+    "confirmAbort": "Confirm abort (different staff member)"
   },
   "attribution": {
     "title": "Attribution",

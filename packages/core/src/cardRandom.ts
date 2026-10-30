@@ -39,9 +39,11 @@ export interface VerifyInput extends CardDrawInput {
   publishedCommit: string;
   publishedParticipantsHash: string;
   publishedAssignment: readonly (readonly string[])[];
+  /** the published `final`, when available — checked too */
+  publishedFinal?: string;
 }
 
-export type VerifyCheck = { id: "commit" | "participants" | "assignment"; ok: boolean; detail?: string };
+export type VerifyCheck = { id: "commit" | "participants" | "final" | "assignment"; ok: boolean; detail?: string };
 
 /** Independent recomputation used by the verify page (F8.3), public verifier (V02) and tests. */
 export function verifyCardDraw(input: VerifyInput): { ok: boolean; checks: VerifyCheck[]; result: CardDrawResult } {
@@ -49,6 +51,7 @@ export function verifyCardDraw(input: VerifyInput): { ok: boolean; checks: Verif
   const checks: VerifyCheck[] = [];
   checks.push({ id: "commit", ok: result.commit === input.publishedCommit });
   checks.push({ id: "participants", ok: result.participantsHash === input.publishedParticipantsHash });
+  if (input.publishedFinal !== undefined) checks.push({ id: "final", ok: result.final === input.publishedFinal });
   const norm = (a: readonly string[]) => [...a].sort().join(",");
   const badIndex = result.assignment.findIndex((a, i) => norm(a) !== norm(input.publishedAssignment[i] ?? []));
   const lengthsMatch = result.assignment.length === input.publishedAssignment.length;

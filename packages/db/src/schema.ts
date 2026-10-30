@@ -220,6 +220,8 @@ export const staffSessions = pgTable("staff_sessions", {
     .notNull()
     .references(() => staff.id),
   mfaVerified: boolean("mfa_verified").notNull().default(false),
+  /** wrong TOTP codes on this session; the session is destroyed at 5 */
+  mfaFailures: integer("mfa_failures").notNull().default(0),
   expiresAt: ts("expires_at").notNull(),
   createdAt: createdAt(),
 });
@@ -491,8 +493,10 @@ export const openingSessions = pgTable("opening_sessions", {
   startedAt: ts("started_at").notNull(),
   sealCloseupAt: ts("seal_closeup_at"),
   endedAt: ts("ended_at"),
-  /** CLOUD_OK | CLOUD_DOWN (local only, continue) | BOTH_DOWN (abort) */
+  /** CLOUD_OK | CLOUD_DOWN (local only, continue) | BOTH_DOWN_PENDING (station frozen, abort awaits a 2nd person) */
   recordingState: text("recording_state").notNull().default("CLOUD_OK"),
+  abortRequestedBy: text("abort_requested_by"),
+  abortRequestedAt: ts("abort_requested_at"),
   playbackUrl: text("playback_url"),
   laborSeconds: integer("labor_seconds"),
 });

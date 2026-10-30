@@ -50,3 +50,4 @@ Migrations must stay backward compatible (§10.12); no deploys from 2 h before a
   CloudWatch alarms / Sentry (T17), AWS Budgets (P11), cross-region copy to Osaka (P12), RDS Proxy.
 - KDDI Message Cast (Twilio is wired meanwhile), Amazon IVS station pipeline (T2), Yamato B2 (T14).
 - Secrets are passed as ECS environment variables; moving them to Secrets Manager references is a follow-up.
+- Seed key access per service: worker Encrypt + Decrypt, admin Encrypt only, web none (T11 least privilege).

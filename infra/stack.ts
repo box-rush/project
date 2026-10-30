@@ -53,7 +53,8 @@ const db = new sst.aws.Postgres("Db", {
 });
 
 const pgUrl = (user: $util.Input<string>, password: $util.Input<string>) =>
-  $interpolate`postgres://${user}:${password}@${db.host}:${db.port}/${db.database}?sslmode=no-verify`;
+  // TLS verified against the RDS CA bundle baked into the images (infra/Dockerfile)
+  $interpolate`postgres://${user}:${password}@${db.host}:${db.port}/${db.database}?sslmode=verify-full&sslrootcert=/etc/ssl/rds-global-bundle.pem`;
 const appDbUrl = pgUrl("boxrush_app_login", secret.DbAppPassword.value);
 const rngDbUrl = pgUrl("boxrush_rng_login", secret.DbRngPassword.value);
 const ownerDbUrl = pgUrl(db.username, db.password);
@@ -84,8 +85,6 @@ const common = {
   NODE_ENV: "production",
   AWS_REGION: "ap-northeast-1",
   DATABASE_URL: appDbUrl,
-  RNG_DATABASE_URL: rngDbUrl,
-  RNG_KMS_KEY_ID: seedKey.arn,
   PSEUDONYM_KEY: secret.PseudonymKey.value,
   WEB_BASE_URL: webHost ? `https://${webHost}` : "http://localhost:3000",
   PAYMENT_PROVIDER: "stripe",
@@ -103,11 +102,23 @@ const common = {
   AUDIT_ARCHIVE_BUCKET: auditArchive.name,
 };
 
-const permissions = [
-  { actions: ["kms:Encrypt", "kms:Decrypt"], resources: [seedKey.arn] },
-  { actions: ["s3:PutObject", "s3:PutObjectRetention"], resources: [$interpolate`${auditArchive.arn}/*`] },
-  ...(email ? [{ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: ["*"] }] : []),
-];
+/**
+ * T11 least privilege. Only the worker (which runs the draw after sell-out) may decrypt seeds. Admin creates the
+ * commitment at approval, so it may encrypt but never decrypt. The internet-facing web service has no access to the
+ * seed key or to the randomness service's DB login at all.
+ */
+const rngForWorker = { RNG_DATABASE_URL: rngDbUrl, RNG_KMS_KEY_ID: seedKey.arn };
+const rngForAdmin = { RNG_DATABASE_URL: rngDbUrl, RNG_KMS_KEY_ID: seedKey.arn };
+const sendEmail = email ? [{ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: ["*"] }] : [];
+const permissions = {
+  web: [...sendEmail],
+  admin: [{ actions: ["kms:Encrypt"], resources: [seedKey.arn] }, ...sendEmail],
+  worker: [
+    { actions: ["kms:Encrypt", "kms:Decrypt"], resources: [seedKey.arn] },
+    { actions: ["s3:PutObject", "s3:PutObjectRetention"], resources: [$interpolate`${auditArchive.arn}/*`] },
+    ...sendEmail,
+  ],
+};
 
 const cluster = new sst.aws.Cluster("Cluster", { vpc });
 const image = (target: string) => ({ context: ".", dockerfile: "infra/Dockerfile", target });
@@ -119,7 +130,7 @@ new sst.aws.Service("Web", {
   cpu: "0.5 vCPU",
   memory: "1 GB",
   scaling: { min: isProd ? 2 : 1, max: isProd ? 8 : 2, cpuUtilization: 60 },
-  permissions,
+  permissions: permissions.web,
   environment: {
     ...common,
     // PD16: only Japanese is public at launch
@@ -146,8 +157,8 @@ new sst.aws.Service("Admin", {
   cpu: "0.25 vCPU",
   memory: "0.5 GB",
   scaling: { min: 1, max: 2 },
-  permissions,
-  environment: common,
+  permissions: permissions.admin,
+  environment: { ...common, ...rngForAdmin },
   loadBalancer: {
     domain: adminHost,
     rules: adminHost
@@ -162,6 +173,7 @@ new sst.aws.Service("Admin", {
     // Staff access only from the office / VPN (T18). Comma separated CIDRs; empty = open (dev only).
     loadBalancerSecurityGroup: (args) => {
       const cidrs = (process.env.ADMIN_ALLOWED_CIDRS ?? "").split(",").filter(Boolean);
+      if (isProd && cidrs.length === 0) throw new Error("ADMIN_ALLOWED_CIDRS is required for production (T18)");
       if (cidrs.length) args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, cidrBlocks: cidrs }));
     },
   },
@@ -174,8 +186,8 @@ new sst.aws.Service("Worker", {
   memory: "0.5 GB",
   // the reconcile loop and archive assume a single worker
   scaling: { min: 1, max: 1 },
-  permissions,
-  environment: common,
+  permissions: permissions.worker,
+  environment: { ...common, ...rngForWorker },
 });
 
 // One-off: `npx sst shell --stage <stage> -- node infra/run-migrate.mjs` (see infra/README.md)

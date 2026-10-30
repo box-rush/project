@@ -68,3 +68,16 @@ describe("bx-shuffle-v1 — prototype UI-09 vectors", () => {
     });
   }
 });
+
+describe("verifier checks the published final too", () => {
+  it("detects a wrong final even when everything else matches", () => {
+    const text = ["user_a1b2#01", "user_a1b2#02", "user_c3d4#03", "user_e5f6#04"].join("\n");
+    const checklist = Array.from({ length: 20 }, (_, i) => `${String(i + 1).padStart(3, "0")}/020`);
+    const r = drawCardNumbers({ serverSeed: "boxrush-mock-L016", participantsText: text, checklist });
+    const base = { serverSeed: "boxrush-mock-L016", participantsText: text, checklist, publishedCommit: r.commit, publishedParticipantsHash: r.participantsHash, publishedAssignment: r.assignment };
+    expect(verifyCardDraw({ ...base, publishedFinal: r.final }).ok).toBe(true);
+    const bad = verifyCardDraw({ ...base, publishedFinal: "0".repeat(64) });
+    expect(bad.ok).toBe(false);
+    expect(bad.checks.find((c) => c.id === "final")!.ok).toBe(false);
+  });
+});

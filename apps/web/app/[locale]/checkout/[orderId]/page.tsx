@@ -3,7 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { formatJst, formatYen } from "@boxrush/core/format";
 import { PARAMS } from "@boxrush/core";
 import { eq, orders } from "@boxrush/db";
-import { MockPaymentProvider, getLottery } from "@boxrush/services";
+import { getLottery, paymentForOrder } from "@boxrush/services";
 import { getCtx } from "@/lib/ctx";
 import { requireUser } from "@/lib/guard";
 import { PageTitle, RefundPromise, Section } from "@/components/ui";
@@ -23,7 +23,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ local
   if (!o || o.userId !== user.id) notFound();
   if (o.status !== "PENDING") return redirect({ href: `/checkout/${orderId}/done`, locale });
   const l = await getLottery(ctx.db, o.lotteryId);
-  const pay = await ctx.payments.createPayment({ purpose: "ORDER", referenceId: o.id, userId: user.id, amount: o.amount, description: `BOXラッシュ 枠購入 ${o.slotCount}枠`, idempotencyKey: `order_${o.id}` }); // lint-ur:allow (PSP statement text, same as holdSlots)
+  // same parameters as at hold time (orderPaymentInput): the PSP rejects a reused idempotency key with other params
+  const pay = await paymentForOrder(ctx, user.id, o.id);
   const mock = ctx.payments.name === "mock" && process.env.PAYMENT_PROVIDER !== "stripe";
   return (
     <div className="mx-auto max-w-xl space-y-4">

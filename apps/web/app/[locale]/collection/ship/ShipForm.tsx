@@ -69,6 +69,7 @@ export function ShipForm(p: { itemIds: string[]; itemCount: number; insured: boo
             const r = await ship(p.itemIds, addr, coupon || null);
             if (!r.ok) return setErr(r.code);
             if (r.data.payable > 0 && r.data.paymentRef && p.mock) await payShipmentWithMock(r.data.paymentRef);
+            // with Stripe the shipment page shows the payment step (AWAITING_PAYMENT)
             router.push(`/shipments/${r.data.shipmentId}`);
           })
         }

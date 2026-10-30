@@ -29,8 +29,8 @@ export interface PaymentProvider {
 
 /** Normalised webhook event. */
 export type PaymentEvent =
-  | { id: string; type: "payment.succeeded"; ref: string; amount: number }
-  | { id: string; type: "payment.failed"; ref: string; reason: string };
+  | { id: string; type: "payment.succeeded"; ref: string; amount: number; purpose?: "ORDER" | "SHIPMENT"; referenceId?: string }
+  | { id: string; type: "payment.failed"; ref: string; reason: string; purpose?: "ORDER" | "SHIPMENT"; referenceId?: string };
 
 /**
  * Local / test provider. Payments succeed when the dev checkout calls `simulateSuccess`
@@ -46,7 +46,11 @@ export class MockPaymentProvider implements PaymentProvider {
 
   async createPayment(input: CreatePaymentInput) {
     const existing = [...this.payments.entries()].find(([, p]) => p.input.idempotencyKey === input.idempotencyKey);
-    if (existing) return { ref: existing[0], clientSecret: `${existing[0]}_secret` };
+    if (existing) {
+      // like Stripe: reusing an idempotency key with different parameters is an error
+      if (JSON.stringify(existing[1].input) !== JSON.stringify(input)) throw new Error("idempotency_error: key reused with different parameters");
+      return { ref: existing[0], clientSecret: `${existing[0]}_secret` };
+    }
     const ref = `mock_pi_${++this.seq}_${input.referenceId.slice(0, 8)}`;
     this.payments.set(ref, { amount: input.amount, status: "PENDING", refunded: 0, input });
     return { ref, clientSecret: `${ref}_secret` };
@@ -103,6 +107,6 @@ export class MockPaymentProvider implements PaymentProvider {
     const p = this.payments.get(ref);
     if (!p) throw new Error(`unknown payment ${ref}`);
     p.status = "SUCCEEDED";
-    return { id: `evt_${ref}`, type: "payment.succeeded", ref, amount: p.amount };
+    return { id: `evt_${ref}`, type: "payment.succeeded", ref, amount: p.amount, purpose: p.input.purpose, referenceId: p.input.referenceId };
   }
 }

@@ -75,11 +75,11 @@ export class StripePaymentProvider implements PaymentProvider {
     const evt = this.stripe.webhooks.constructEvent(rawBody, signature, this.webhookSecret);
     if (evt.type === "payment_intent.succeeded") {
       const pi = evt.data.object as Stripe.PaymentIntent;
-      return { id: evt.id, type: "payment.succeeded", ref: pi.id, amount: pi.amount_received };
+      return { id: evt.id, type: "payment.succeeded", ref: pi.id, amount: pi.amount_received, purpose: pi.metadata.purpose as "ORDER" | "SHIPMENT", referenceId: pi.metadata.referenceId };
     }
     if (evt.type === "payment_intent.payment_failed") {
       const pi = evt.data.object as Stripe.PaymentIntent;
-      return { id: evt.id, type: "payment.failed", ref: pi.id, reason: pi.last_payment_error?.code ?? "failed" };
+      return { id: evt.id, type: "payment.failed", ref: pi.id, reason: pi.last_payment_error?.code ?? "failed", purpose: pi.metadata.purpose as "ORDER" | "SHIPMENT", referenceId: pi.metadata.referenceId };
     }
     return null;
   }

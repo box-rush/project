@@ -1,6 +1,6 @@
 import { PARAMS, addMinutes, checkSpending, effectiveLimits, formatYen, startOfJstDay, type SpendingLimits, DEFAULT_LIMITS } from "@boxrush/core";
 import { accountLinks, and, eq, inArray, inventoryUnits, isNull, lotteries, merchants, or, orders, paymentEvents, slots, spendingLimits, sql, staff, users, type DbOrTx } from "@boxrush/db";
-import type { PaymentEvent } from "./adapters/payments";
+import type { CreatePaymentInput, PaymentEvent } from "./adapters/payments";
 import { audit, SYSTEM } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -132,18 +132,36 @@ export async function holdSlots(ctx: Ctx, userId: string, lotteryId: string, cou
     return { order: order!, slotNumbers: taken.rows.map((r) => Number(r.number)).sort((a, b) => a - b) };
   });
 
-  const pay = await ctx.payments.createPayment({
-    customerRef: await paymentCustomer(ctx, userId),
-    purpose: "ORDER",
-    referenceId: res.order.id,
-    userId,
-    amount: res.order.amount,
-    description: `BOXラッシュ 枠購入 ${res.order.slotCount}枠`,
-    idempotencyKey: `order_${res.order.id}`,
-  });
+  const pay = await ctx.payments.createPayment(await orderPaymentInput(ctx, res.order));
   await ctx.db.update(orders).set({ paymentRef: pay.ref }).where(eq(orders.id, res.order.id));
   await recordEvent(ctx.db, "checkout_hold", { userId, props: { lotteryId, count } }, now);
   return { orderId: res.order.id, slotNumbers: res.slotNumbers, amount: res.order.amount, heldUntil: res.order.heldUntil, paymentRef: pay.ref, clientSecret: pay.clientSecret };
+}
+
+/**
+ * The one place that defines an order's PSP payment. Every caller (hold, checkout page) must use it: the PSP rejects
+ * an idempotency key reused with different parameters.
+ */
+export async function orderPaymentInput(ctx: Ctx, order: Pick<typeof orders.$inferSelect, "id" | "userId" | "amount" | "slotCount">): Promise<CreatePaymentInput> {
+  return {
+    customerRef: await paymentCustomer(ctx, order.userId),
+    purpose: "ORDER",
+    referenceId: order.id,
+    userId: order.userId,
+    amount: order.amount,
+    description: `BOXラッシュ 枠購入 ${order.slotCount}枠`,
+    idempotencyKey: `order_${order.id}`,
+  };
+}
+
+/** Checkout page: the (idempotent) payment for a pending order of this user. */
+export async function paymentForOrder(ctx: Ctx, userId: string, orderId: string) {
+  const [o] = await ctx.db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.userId, userId)));
+  if (!o) fail("NOT_FOUND");
+  if (o.status !== "PENDING") fail("NOT_PENDING");
+  const pay = await ctx.payments.createPayment(await orderPaymentInput(ctx, o));
+  if (!o.paymentRef) await ctx.db.update(orders).set({ paymentRef: pay.ref }).where(and(eq(orders.id, o.id), sql`${orders.paymentRef} IS NULL`));
+  return pay;
 }
 
 /**
@@ -157,7 +175,15 @@ export async function handlePaymentEvent(ctx: Ctx, evt: PaymentEvent) {
     const inserted = await tx.insert(paymentEvents).values({ eventId: evt.id, provider: ctx.payments.name, type: evt.type, payload: evt }).onConflictDoNothing().returning();
     if (inserted.length === 0) return { duplicate: true as const };
 
-    const [order] = await tx.select().from(orders).where(eq(orders.paymentRef, evt.ref)).for("update");
+    let [order] = await tx.select().from(orders).where(eq(orders.paymentRef, evt.ref)).for("update");
+    if (!order && evt.purpose === "ORDER" && evt.referenceId) {
+      // the PSP call succeeded but storing its reference did not: recover the link from the payment metadata
+      [order] = await tx.select().from(orders).where(and(eq(orders.id, evt.referenceId), sql`${orders.paymentRef} IS NULL`)).for("update");
+      if (order) {
+        await tx.update(orders).set({ paymentRef: evt.ref }).where(eq(orders.id, order.id));
+        order = { ...order, paymentRef: evt.ref };
+      }
+    }
     if (!order) {
       // Shipment payments share the webhook.
       const { handleShipmentPayment } = await import("./warehouse");
@@ -168,18 +194,16 @@ export async function handlePaymentEvent(ctx: Ctx, evt: PaymentEvent) {
       return { orderId: order.id, status: order.status };
     }
     if (order.status !== "PENDING" && order.status !== "EXPIRED") return { orderId: order.id, status: order.status };
-    if (evt.amount !== order.amount) {
-      await audit(tx, SYSTEM, "order.amount_mismatch", "order", order.id, { expected: order.amount, got: evt.amount }, now);
-      throw new Error("amount mismatch");
-    }
+    const amountMismatch = evt.amount !== order.amount;
+    if (amountMismatch) await audit(tx, SYSTEM, "order.amount_mismatch", "order", order.id, { expected: order.amount, got: evt.amount }, now);
     const lot = await lockLottery(tx, order.lotteryId);
     const mine = await tx.select().from(slots).where(and(eq(slots.orderId, order.id), eq(slots.state, "HELD")));
-    const lateOrTaken = mine.length !== order.slotCount || lot.status !== "ON_SALE";
+    const lateOrTaken = amountMismatch || mine.length !== order.slotCount || lot.status !== "ON_SALE";
     if (lateOrTaken) {
-      // Hold was lost (expired and re-sold, or the sale closed): never sell beyond 100%, refund instead.
+      // Hold lost (expired and re-sold, sale closed) or the captured amount is wrong: never sell, refund what was captured.
       await tx.update(orders).set({ status: "PAID", paidAt: now }).where(eq(orders.id, order.id));
       if (mine.length) await tx.update(slots).set({ state: "AVAILABLE", heldBy: null, heldUntil: null, orderId: null }).where(and(eq(slots.orderId, order.id), eq(slots.state, "HELD")));
-      await scheduleOrderRefund(tx, { ...order, status: "PAID" }, "LATE_PAYMENT", now);
+      await scheduleOrderRefund(tx, { ...order, status: "PAID", amount: evt.amount }, amountMismatch ? "AMOUNT_MISMATCH" : "LATE_PAYMENT", now);
       await notify(tx, order.userId, "LATE_PAYMENT_REFUNDED", { amount: formatYen(order.amount) }, `late:${order.id}`, now);
       return { orderId: order.id, status: "LATE_PAYMENT" as const };
     }

@@ -214,7 +214,10 @@
     "BAD_CHECKSUM": "校验值不正确",
     "SHIPMENT_IN_PROGRESS": "正在发货处理中",
     "STORED_ITEMS_REMAIN": "仍有保管中的卡片",
-    "ACTIVE_LOTTERIES": "有进行中的场次"
+    "ACTIVE_LOTTERIES": "有进行中的场次",
+    "ON_LIST_CARD_FIXED_SLOT": "清单内的卡号只能归属到抽选决定的位",
+    "INVENTORY_UNAVAILABLE": "该盒或保底卡已被分配给其他场次",
+    "LOGIN_THROTTLED": "登录失败次数过多，请稍后再试"
   },
   "issues": {
     "SCHEMA": "输入不完整或格式不正确（{field}）",
@@ -709,7 +712,10 @@
     "waiting": "请输入卡号",
     "voidLast": "撤销上一条录入",
     "finish": "开盒完成",
-    "finishConfirm": "已录入 {n} 张。确定完成开盒并转入归属？"
+    "finishConfirm": "已录入 {n} 张。确定完成开盒并转入归属？",
+    "abortPendingTitle": "已报告录像两路同时中断",
+    "abortPendingHelp": "工位已冻结。由另一名人员（开盒或审核）确认后，本场中止并全额退款。不能继续开盒。",
+    "confirmAbort": "确认中止（另一名人员）"
   },
   "attribution": {
     "title": "归属工作台",

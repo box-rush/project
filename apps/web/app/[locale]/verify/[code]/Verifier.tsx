@@ -23,6 +23,7 @@ export function Verifier(props: { serverSeed: string; participantsText: string; 
       publishedCommit: props.commit,
       publishedParticipantsHash: props.participantsHash,
       publishedAssignment: published,
+      publishedFinal: props.final,
     });
     setTampered(tamper);
     setChecks(r.checks);

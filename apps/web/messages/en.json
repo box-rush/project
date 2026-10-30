@@ -226,7 +226,8 @@
     "checks": {
       "commit": "Seed hash matches the commitment",
       "participants": "Participant list hash matches",
-      "assignment": "Card numbers for all slots match"
+      "assignment": "Card numbers for all slots match",
+      "final": "final (computed from seed and participants) matches"
     },
     "ok": "Match",
     "ng": "No match",

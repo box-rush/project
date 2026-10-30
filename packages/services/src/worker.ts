@@ -1,7 +1,7 @@
 import { and, eq, inArray, jobs, lotteries, lte, orders, sql } from "@boxrush/db";
 import { addHours, PARAMS } from "@boxrush/core";
 import type { Ctx } from "./context";
-import { enqueue, runDueJobs, type JobHandler } from "./jobs";
+import { enqueue, reclaimStaleJobs, runDueJobs, stuckJobs, type JobHandler } from "./jobs";
 import { checkRefunded, closeSale, expireHold } from "./sales";
 import { runDraw } from "./draw";
 import { openingOverdue } from "./opening";
@@ -49,8 +49,8 @@ export async function reconcile(ctx: Ctx) {
     const pendingRefunds = await tx.execute<{ id: string }>(sql`SELECT id FROM refunds WHERE status = 'PENDING'`);
     for (const r of pendingRefunds.rows) await enqueue(tx, "refund.execute", `refund:${r.id}`, now, { refundId: r.id });
   });
-  const failed = await ctx.db.select().from(jobs).where(eq(jobs.status, "FAILED"));
-  return { fixes, failedJobs: failed.length };
+  const reclaimed = await reclaimStaleJobs(ctx.db, now);
+  return { fixes, reclaimed, failedJobs: await stuckJobs(ctx.db, now) };
 }
 
 export async function dailySweeps(ctx: Ctx) {
@@ -80,7 +80,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const now = Date.now();
       if (now - lastReconcile > 60_000) {
         const rec = await reconcile(ctx);
-        if (rec.failedJobs) console.warn(`[alert] ${rec.failedJobs} failed jobs`);
+        if (rec.failedJobs) console.warn(`[alert] ${rec.failedJobs} jobs failing repeatedly or overdue`);
+        if (rec.reclaimed) console.warn(`[alert] reclaimed ${rec.reclaimed} jobs left RUNNING by a lost worker`);
         lastReconcile = now;
       }
       const day = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);

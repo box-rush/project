@@ -36,19 +36,38 @@ export async function runDueJobs(ctx: Ctx, handlers: Record<string, JobHandler>,
       done++;
     } catch (e) {
       failed++;
+      // Never give up: refunds, draws and sale closes must eventually happen. Back off up to 30 minutes and
+      // let monitoring (stuckJobs) alert on repeated failures.
       const attempts = claimed.attempts + 1;
-      const giveUp = attempts >= 5;
       await ctx.db
         .update(jobs)
         .set({
-          status: giveUp ? "FAILED" : "PENDING",
+          status: "PENDING",
           lastError: e instanceof Error ? e.message : String(e),
-          runAt: new Date(ctx.now().getTime() + 60_000 * 2 ** attempts),
+          runAt: new Date(ctx.now().getTime() + 60_000 * Math.min(30, 2 ** attempts)),
         })
         .where(eq(jobs.id, Number(claimed.id)));
     }
   }
   return { done, failed };
+}
+
+/** A worker that died mid-job leaves it RUNNING; give it back to the queue after 10 minutes. */
+export async function reclaimStaleJobs(db: DbOrTx, now: Date) {
+  const r = await db
+    .update(jobs)
+    .set({ status: "PENDING", runAt: now, lastError: sql`coalesce(${jobs.lastError}, '') || ' [reclaimed after worker loss]'` })
+    .where(and(eq(jobs.status, "RUNNING"), lte(jobs.lockedAt, new Date(now.getTime() - 10 * 60_000))))
+    .returning({ id: jobs.id });
+  return r.length;
+}
+
+/** For alerting (T17): jobs failing repeatedly or overdue. */
+export async function stuckJobs(db: DbOrTx, now: Date) {
+  const r = await db.execute<{ c: string }>(
+    sql`SELECT count(*)::text AS c FROM jobs WHERE (status = 'PENDING' AND attempts >= 5) OR (status = 'PENDING' AND run_at < ${new Date(now.getTime() - 30 * 60_000)}) OR status = 'FAILED'`,
+  );
+  return Number(r.rows[0]?.c ?? 0);
 }
 
 export async function overdueJobs(db: DbOrTx, now: Date) {

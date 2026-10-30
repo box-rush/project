@@ -1,5 +1,5 @@
-import { H, PARAMS, addDays, normalizeCardInput, slotsNeedingGuarantee, formatJst } from "@boxrush/core";
-import { and, asc, eq, inArray, inventoryUnits, collectionItems, lotteries, openedCards, openingRecords, orders, slots } from "@boxrush/db";
+import { PARAMS, addDays, normalizeCardInput, slotsNeedingGuarantee, formatJst } from "@boxrush/core";
+import { and, asc, eq, inArray, inventoryUnits, collectionItems, lotteries, openedCards, orders, slots, sql } from "@boxrush/db";
 import { audit } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -24,6 +24,12 @@ export async function proposeAttribution(ctx: Ctx, p: StaffPrincipal, cardId: st
     if (lot.status !== "ATTRIBUTING") fail("NOT_ATTRIBUTING");
     const valid = await tx.select().from(slots).where(and(eq(slots.lotteryId, lot.id), eq(slots.purchaseSeq, slotNumber)));
     if (valid.length !== 1) fail("INVALID_SLOT");
+    // §6.4.5: an on-list card number belongs to the slot the draw gave it. People may only confirm that, never move it;
+    // only off-list cards (fallback rule, X8) are placed by a human decision.
+    if (!card.offList) {
+      const expected = (await slotIndex(tx, lot.id)).get(card.cardNumber);
+      if (expected !== slotNumber) fail("ON_LIST_CARD_FIXED_SLOT", { expected: expected ?? null });
+    }
     if (note.trim().length < 2) fail("NOTE_REQUIRED");
     await tx.update(openedCards).set({ slotNumber, method: card.offList ? "FALLBACK" : "MANUAL", proposedBy: p.id, confirmedBy: null, note }).where(eq(openedCards.id, cardId));
     await audit(tx, staffActor(p), "attribution.propose", "opened_card", cardId, { slotNumber, note });
@@ -84,13 +90,17 @@ export async function finalizeAttribution(ctx: Ctx, p: StaffPrincipal, lotteryId
     const live = cards.filter((c) => c.status !== "VOID");
     if (live.some((c) => c.status !== "CONFIRMED")) fail("REVIEW_PENDING", { count: live.filter((c) => c.status !== "CONFIRMED").length });
     const slotRows = await tx.select().from(slots).where(eq(slots.lotteryId, lotteryId)).orderBy(asc(slots.purchaseSeq));
-    const zero = slotsNeedingGuarantee(slotRows.map((s) => s.purchaseSeq!), live.map((c) => ({ slotNumber: c.slotNumber })));
-    const guaranteeUnits = await tx.select().from(inventoryUnits).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "GUARANTEE_CARD"), eq(inventoryUnits.status, "ALLOCATED"))).orderBy(asc(inventoryUnits.label));
-    if (guaranteeUnits.length < zero.length) fail("GUARANTEE_STOCK_SHORT", { needed: zero.length, have: guaranteeUnits.length });
-
     const refundedOrders = new Set(
       (await tx.select({ id: orders.id }).from(orders).where(and(eq(orders.lotteryId, lotteryId), inArray(orders.status, ["REFUND_PENDING", "REFUNDED"])))).map((o) => o.id),
     );
+    // X6-refunded slots get no guarantee card (their cards stay with the platform)
+    const zero = slotsNeedingGuarantee(
+      slotRows.filter((s) => !refundedOrders.has(s.orderId!)).map((s) => s.purchaseSeq!),
+      live.map((c) => ({ slotNumber: c.slotNumber })),
+    );
+    const guaranteeUnits = await tx.select().from(inventoryUnits).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "GUARANTEE_CARD"), eq(inventoryUnits.status, "ALLOCATED"))).orderBy(asc(inventoryUnits.label));
+    if (guaranteeUnits.length < zero.length) fail("GUARANTEE_STOCK_SHORT", { needed: zero.length, have: guaranteeUnits.length });
+
     const bySeq = new Map(slotRows.map((s) => [s.purchaseSeq!, s]));
     const freeUntil = addDays(now, PARAMS.freeStorageDays);
     const awarded: { slotNumber: number; unitId: string; label: string }[] = [];
@@ -126,9 +136,14 @@ export async function finalizeAttribution(ctx: Ctx, p: StaffPrincipal, lotteryId
 
     await transition(tx, lot, "ATTRIBUTED", staffActor(p), { attributedAt: now }, now);
     const record = await buildOpeningRecord(tx, lotteryId);
-    const recordJson = JSON.stringify(record);
-    await tx.insert(openingRecords).values({ lotteryId, record, recordHash: H(recordJson), createdAt: now });
-    await audit(tx, staffActor(p), "opening_record.write", "lottery", lotteryId, { recordHash: H(recordJson), guarantees: awarded.length }, now);
+    // The hash is taken over PostgreSQL's canonical jsonb text, which is exactly what /api/records serves for the
+    // frozen record, so anyone can recompute it from the published bytes.
+    const ins = await tx.execute<{ record_hash: string }>(sql`
+      INSERT INTO opening_records (lottery_id, record, record_hash, created_at)
+      SELECT ${lotteryId}, r, encode(digest(r::text, 'sha256'), 'hex'), ${now} FROM (SELECT ${JSON.stringify(record)}::jsonb AS r) x
+      RETURNING record_hash`);
+    const recordHash = ins.rows[0]!.record_hash;
+    await audit(tx, staffActor(p), "opening_record.write", "lottery", lotteryId, { recordHash, guarantees: awarded.length }, now);
     for (const owner of new Set(slotRows.map((s) => s.ownerUserId!)))
       await notify(tx, owner, "RESULT_PUBLISHED", { title: lot.title, at: formatJst(now) }, `result:${lotteryId}:${owner}`, now);
   });

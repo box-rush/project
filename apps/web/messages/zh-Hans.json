@@ -226,7 +226,8 @@
     "checks": {
       "commit": "种子哈希与承诺一致",
       "participants": "参与者名单哈希一致",
-      "assignment": "所有位的卡号一致"
+      "assignment": "所有位的卡号一致",
+      "final": "final（由种子与参与者列表计算）一致"
     },
     "ok": "一致",
     "ng": "不一致",

@@ -1,6 +1,6 @@
 import { PARAMS, addDays, formatJst, formatYen, quoteShipment } from "@boxrush/core";
 import { addresses, and, asc, collectionItems, coupons, eq, inArray, isNull, lotteries, lt, paymentMethods, refunds, shipments, slots, sql, users, type DbOrTx } from "@boxrush/db";
-import type { PaymentEvent } from "./adapters/payments";
+import type { CreatePaymentInput, PaymentEvent } from "./adapters/payments";
 import { audit, SYSTEM } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -71,7 +71,7 @@ export async function requestShipment(ctx: Ctx, userId: string, input: { itemIds
   });
   let clientSecret: string | null = null;
   if (quote.payable > 0) {
-    const pay = await ctx.payments.createPayment({ customerRef: await paymentCustomer(ctx, userId), purpose: "SHIPMENT", referenceId: shipment.id, userId, amount: quote.payable, description: `BOXラッシュ 送料`, idempotencyKey: `shipment_${shipment.id}` });
+    const pay = await ctx.payments.createPayment(await shipmentPaymentInput(ctx, shipment));
     await ctx.db.update(shipments).set({ paymentRef: pay.ref }).where(eq(shipments.id, shipment.id));
     clientSecret = pay.clientSecret;
     shipment.paymentRef = pay.ref;
@@ -80,10 +80,47 @@ export async function requestShipment(ctx: Ctx, userId: string, input: { itemIds
   return { shipment, quote, clientSecret };
 }
 
+/** The one definition of a shipment fee payment (same idempotency rule as orders). */
+export async function shipmentPaymentInput(ctx: Ctx, s: Pick<typeof shipments.$inferSelect, "id" | "userId" | "payable">): Promise<CreatePaymentInput> {
+  return {
+    customerRef: await paymentCustomer(ctx, s.userId),
+    purpose: "SHIPMENT",
+    referenceId: s.id,
+    userId: s.userId,
+    amount: s.payable,
+    description: "BOXラッシュ 送料",
+    idempotencyKey: `shipment_${s.id}`,
+  };
+}
+
+/** Shipment page: (idempotent) payment for an unpaid shipment of this user. */
+export async function paymentForShipment(ctx: Ctx, userId: string, shipmentId: string) {
+  const [s] = await ctx.db.select().from(shipments).where(and(eq(shipments.id, shipmentId), eq(shipments.userId, userId)));
+  if (!s) fail("NOT_FOUND");
+  if (s.status !== "AWAITING_PAYMENT" || s.forced) fail("NOT_PENDING");
+  const pay = await ctx.payments.createPayment(await shipmentPaymentInput(ctx, s));
+  if (!s.paymentRef) await ctx.db.update(shipments).set({ paymentRef: pay.ref }).where(and(eq(shipments.id, s.id), sql`${shipments.paymentRef} IS NULL`));
+  return pay;
+}
+
 export async function handleShipmentPayment(tx: DbOrTx, ctx: Ctx, evt: PaymentEvent) {
-  const [s] = await tx.select().from(shipments).where(eq(shipments.paymentRef, evt.ref)).for("update");
+  let [s] = await tx.select().from(shipments).where(eq(shipments.paymentRef, evt.ref)).for("update");
+  if (!s && evt.purpose === "SHIPMENT" && evt.referenceId) {
+    [s] = await tx.select().from(shipments).where(and(eq(shipments.id, evt.referenceId), sql`${shipments.paymentRef} IS NULL`)).for("update");
+    if (s) {
+      await tx.update(shipments).set({ paymentRef: evt.ref }).where(eq(shipments.id, s.id));
+      s = { ...s, paymentRef: evt.ref };
+    }
+  }
   if (!s) return { unknown: true as const };
-  if (evt.type !== "payment.succeeded" || s.status !== "AWAITING_PAYMENT") return { shipmentId: s.id, status: s.status };
+  if (evt.type === "payment.succeeded" && s.status !== "AWAITING_PAYMENT") {
+    // Paid after the request was cancelled (30-min expiry) or paid twice: refund what was captured, to the same card.
+    const [r] = await tx.insert(refunds).values({ shipmentId: s.id, userId: s.userId, amount: evt.amount, reason: "SHIPMENT_LATE_PAYMENT", createdAt: ctx.now() }).returning();
+    await enqueue(tx, "refund.execute", `refund:${r!.id}`, ctx.now(), { refundId: r!.id });
+    await audit(tx, SYSTEM, "shipment.late_payment_refund", "shipment", s.id, { amount: evt.amount, status: s.status }, ctx.now());
+    return { shipmentId: s.id, status: "LATE_PAYMENT" as const };
+  }
+  if (evt.type !== "payment.succeeded") return { shipmentId: s.id, status: s.status };
   await tx.update(shipments).set({ status: "REQUESTED" }).where(eq(shipments.id, s.id));
   await tx.update(collectionItems).set({ state: "SHIPPING" }).where(eq(collectionItems.shipmentId, s.id));
   await audit(tx, SYSTEM, "shipment.paid", "shipment", s.id, { amount: evt.amount }, ctx.now());
@@ -92,14 +129,17 @@ export async function handleShipmentPayment(tx: DbOrTx, ctx: Ctx, evt: PaymentEv
 
 /** Unpaid shipment requests are released after 30 minutes. */
 export async function expireUnpaidShipment(ctx: Ctx, shipmentId: string) {
-  await ctx.db.transaction(async (tx) => {
+  const ref = await ctx.db.transaction(async (tx) => {
     const [s] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId)).for("update");
-    if (!s || s.status !== "AWAITING_PAYMENT") return;
+    if (!s || s.status !== "AWAITING_PAYMENT" || s.forced) return null;
     await tx.update(shipments).set({ status: "CANCELLED" }).where(eq(shipments.id, shipmentId));
     await tx.update(collectionItems).set({ shipmentId: null }).where(eq(collectionItems.shipmentId, shipmentId));
+    if (s.couponId) await tx.update(coupons).set({ usedAt: null, usedShipmentId: null }).where(eq(coupons.id, s.couponId));
     await audit(tx, SYSTEM, "shipment.cancel_unpaid", "shipment", shipmentId, {});
-    if (s.paymentRef) await ctx.payments.cancelPayment(s.paymentRef).catch(() => undefined);
+    return s.paymentRef;
   });
+  // PSP call outside the transaction; a payment that still lands later is refunded by handleShipmentPayment
+  if (ref) await ctx.payments.cancelPayment(ref).catch(() => undefined);
 }
 
 /** O13 pick list: consolidated per shipment (F22.2), with insured packing flag (F22.3). */
@@ -186,7 +226,7 @@ export async function forcedShipmentSweep(ctx: Ctx) {
     const [addr] = await ctx.db.select().from(addresses).where(and(eq(addresses.userId, userId), isNull(addresses.deletedAt))).orderBy(sql`is_default DESC`).limit(1);
     if (!addr) {
       await ctx.db.transaction(async (tx) => {
-        await tx.update(users).set({ purchaseSuspendedReason: "ADDRESS_REQUIRED" }).where(eq(users.id, userId));
+        await tx.update(users).set({ purchaseSuspendedReason: "ADDRESS_REQUIRED" }).where(and(eq(users.id, userId), isNull(users.purchaseSuspendedReason)));
         await notify(tx, userId, "ADDRESS_REQUIRED", {}, `addr-req:${userId}:${now.toISOString().slice(0, 7)}`, now);
         await audit(tx, SYSTEM, "forced.no_address", "user", userId, {}, now);
       });
@@ -203,8 +243,17 @@ export async function forcedShipmentSweep(ctx: Ctx) {
         .insert(shipments)
         .values({ userId, addressSnapshot: addr, itemCount: items.length, slotCount, insured: quote.insured, fee: quote.fee, payable: quote.payable, couponId: quote.couponApplied ? coupon!.id : null, forced: true, status: quote.payable > 0 ? "AWAITING_PAYMENT" : "REQUESTED", requestedAt: now })
         .returning();
-      await tx.update(collectionItems).set({ shipmentId: r[0]!.id, ...(quote.payable === 0 ? { state: "SHIPPING" as const } : {}) }).where(inArray(collectionItems.id, items.map((i) => i.id)));
-      if (quote.couponApplied) await tx.update(coupons).set({ usedAt: now, usedShipmentId: r[0]!.id }).where(eq(coupons.id, coupon!.id));
+      // guarded: a user request may have claimed these items or the coupon since they were read
+      const claimed = await tx
+        .update(collectionItems)
+        .set({ shipmentId: r[0]!.id, ...(quote.payable === 0 ? { state: "SHIPPING" as const } : {}) })
+        .where(and(inArray(collectionItems.id, items.map((i) => i.id)), isNull(collectionItems.shipmentId), eq(collectionItems.state, "STORED")))
+        .returning({ id: collectionItems.id });
+      if (claimed.length !== items.length) throw new Error("forced shipment: items changed concurrently, retry next sweep");
+      if (quote.couponApplied) {
+        const used = await tx.update(coupons).set({ usedAt: now, usedShipmentId: r[0]!.id }).where(and(eq(coupons.id, coupon!.id), isNull(coupons.usedAt))).returning();
+        if (used.length !== 1) throw new Error("forced shipment: coupon used concurrently, retry next sweep");
+      }
       await notify(tx, userId, "FORCED_SHIPMENT", { count: items.length, fee: formatYen(quote.payable) }, `forced:${r[0]!.id}`, now);
       await audit(tx, SYSTEM, "forced.create", "shipment", r[0]!.id, { items: items.length, payable: quote.payable }, now);
       if (quote.payable > 0) await enqueue(tx, "shipment.forcedCharge", `forced-charge:${r[0]!.id}:1`, now, { shipmentId: r[0]!.id });
@@ -239,6 +288,7 @@ export async function forcedCharge(ctx: Ctx, shipmentId: string) {
       // Platform advances the fee, ships anyway, and suspends purchasing until the payment method is updated.
       await tx.update(shipments).set({ status: "REQUESTED", chargeAttempts: attempt, platformAdvanced: true }).where(eq(shipments.id, s.id));
       await tx.update(collectionItems).set({ state: "SHIPPING" }).where(eq(collectionItems.shipmentId, s.id));
+      // payment takes precedence over a pending address suspension (adding an address must not lift it)
       await tx.update(users).set({ purchaseSuspendedReason: "PAYMENT_METHOD_REQUIRED" }).where(eq(users.id, s.userId));
       await notify(tx, s.userId, "PAYMENT_METHOD_REQUIRED", {}, `forced-advance:${s.id}`, now);
     }

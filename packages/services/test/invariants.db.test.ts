@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eq, lotteries, slots, sql } from "@boxrush/db";
-import { getLottery, saveDraft, submitForReview, approveLottery, verifyAuditChain, abortLottery, startOpening, reportRecordingState } from "../src";
+import { getLottery, saveDraft, submitForReview, approveLottery, verifyAuditChain, abortLottery, startOpening, reportRecordingState, confirmRecordingAbort, enterCard, finishOpening } from "../src";
 import { Clock, JST, buy, configFor, drain, listedLottery, makeCtx, makeUser, makeWorld, pgRejects } from "./helpers";
 
 describe("SV1: invariant violations never reach review", () => {
@@ -39,6 +39,8 @@ describe("database-enforced invariants", () => {
     const { ctx } = makeCtx(clock);
     const w = await makeWorld(ctx);
     const { id } = await saveDraft(ctx, w.merchantStaff, await configFor(ctx, w));
+    await pgRejects(ctx.db.execute(sql`UPDATE lotteries SET status = 'ON_SALE' WHERE id = ${id}`), /illegal lottery transition/);
+    await ctx.db.execute(sql`UPDATE lotteries SET status = 'PENDING_REVIEW' WHERE id = ${id}`);
     await pgRejects(ctx.db.execute(sql`UPDATE lotteries SET status = 'ON_SALE' WHERE id = ${id}`), /i6_commit_before_sale/);
   });
 
@@ -97,6 +99,13 @@ describe("X7: recording lost on both paths during opening → abort, full refund
     await reportRecordingState(ctx, w.station, id, "CLOUD_DOWN");
     expect((await getLottery(ctx.db, id)).status).toBe("OPENING");
     await reportRecordingState(ctx, w.station, id, "BOTH_DOWN");
+    // frozen, not yet aborted: a second person must confirm; the reporter cannot
+    expect((await getLottery(ctx.db, id)).status).toBe("OPENING");
+    await expect(enterCard(ctx, w.station, id, { raw: "1", videoTsSec: 1 })).rejects.toMatchObject({ code: "RECORDING_INTERRUPTED" });
+    await expect(finishOpening(ctx, w.station, id)).rejects.toMatchObject({ code: "RECORDING_INTERRUPTED" });
+    await expect(reportRecordingState(ctx, w.station, id, "CLOUD_OK")).rejects.toMatchObject({ code: "RECORDING_INTERRUPTED" });
+    await expect(confirmRecordingAbort(ctx, w.station, id)).rejects.toMatchObject({ code: "SELF_APPROVAL" });
+    await confirmRecordingAbort(ctx, w.reviewer, id);
     expect((await getLottery(ctx.db, id)).status).toBe("ABORTED");
     await drain(ctx);
     const lot = await getLottery(ctx.db, id);

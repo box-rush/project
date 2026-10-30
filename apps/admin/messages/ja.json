@@ -214,7 +214,10 @@
     "BAD_CHECKSUM": "チェックサムが正しくありません",
     "SHIPMENT_IN_PROGRESS": "発送手続き中です",
     "STORED_ITEMS_REMAIN": "保管中のカードがあります",
-    "ACTIVE_LOTTERIES": "参加中の開封会があります"
+    "ACTIVE_LOTTERIES": "参加中の開封会があります",
+    "ON_LIST_CARD_FIXED_SLOT": "リスト内のカード番号は抽選で決まった枠にしか振り分けられません",
+    "INVENTORY_UNAVAILABLE": "対象のBOXまたは保証カードが既に別の開封会に割り当てられています",
+    "LOGIN_THROTTLED": "ログインの失敗が続いたため、しばらくしてからお試しください"
   },
   "issues": {
     "SCHEMA": "入力が不足しているか、形式が正しくありません（{field}）",
@@ -709,7 +712,10 @@
     "waiting": "カード番号を入力してください",
     "voidLast": "直前の入力を取り消す",
     "finish": "開封完了",
-    "finishConfirm": "{n}枚を入力しました。開封を完了して振り分けへ送りますか？"
+    "finishConfirm": "{n}枚を入力しました。開封を完了して振り分けへ送りますか？",
+    "abortPendingTitle": "録画が両系統とも途切れたと報告されました",
+    "abortPendingHelp": "ステーションは停止しています。別の担当者（開封担当または審査担当）が確認すると、この開封会は中止・全額返金になります。続行はできません。",
+    "confirmAbort": "中止を確認する（別の担当者）"
   },
   "attribution": {
     "title": "振り分け",

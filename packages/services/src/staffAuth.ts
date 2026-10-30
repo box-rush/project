@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, staff, staffSessions } from "@boxrush/db";
+import { and, eq, gt, sql, staff, staffSessions } from "@boxrush/db";
 import { audit } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -64,10 +64,21 @@ export async function createStaff(ctx: Ctx, input: { email: string; name: string
   return { staff: row!, totpSecret: secret };
 }
 
+const MAX_MFA_FAILURES = 5;
+
 /** Step 1: password → a session that is NOT yet usable (mfaVerified = false). */
 export async function staffLogin(ctx: Ctx, email: string, password: string) {
-  const [s] = await ctx.db.select().from(staff).where(eq(staff.email, email.toLowerCase()));
-  if (!s || s.disabledAt || !verifyPassword(password, s.passwordHash)) fail("INVALID_CREDENTIALS");
+  const key = email.toLowerCase();
+  // throttle: 10 failed attempts per address in 15 minutes
+  const recent = await ctx.db.execute<{ c: string }>(
+    sql`SELECT count(*)::text AS c FROM audit_log WHERE action = 'staff.login_failed' AND entity_id = ${key} AND at > ${new Date(ctx.now().getTime() - 15 * 60_000)}`,
+  );
+  if (Number(recent.rows[0]?.c ?? 0) >= 10) fail("LOGIN_THROTTLED");
+  const [s] = await ctx.db.select().from(staff).where(eq(staff.email, key));
+  if (!s || s.disabledAt || !verifyPassword(password, s.passwordHash)) {
+    await audit(ctx.db, { type: "SYSTEM", id: null }, "staff.login_failed", "staff_login", key);
+    fail("INVALID_CREDENTIALS");
+  }
   const token = randomBytes(32).toString("hex");
   await ctx.db.insert(staffSessions).values({ token, staffId: s.id, expiresAt: new Date(ctx.now().getTime() + 12 * 3600_000) });
   return { token, needsEnrollment: !s.totpEnrolledAt, totpUri: s.totpEnrolledAt ? null : totpUri(s.totpSecret, s.email) };
@@ -77,8 +88,16 @@ export async function staffLogin(ctx: Ctx, email: string, password: string) {
 export async function staffVerifyMfa(ctx: Ctx, token: string, code: string) {
   const [sess] = await ctx.db.select().from(staffSessions).where(and(eq(staffSessions.token, token), gt(staffSessions.expiresAt, ctx.now())));
   if (!sess) fail("SESSION_EXPIRED");
+  if (sess.mfaVerified) return;
   const [s] = await ctx.db.select().from(staff).where(eq(staff.id, sess.staffId));
-  if (!s || !verifyTotp(s.totpSecret, code, ctx.now())) fail("INVALID_MFA");
+  if (!s || !verifyTotp(s.totpSecret, code, ctx.now())) {
+    // online brute force: 5 wrong codes and the password step must be repeated
+    const failures = sess.mfaFailures + 1;
+    if (failures >= MAX_MFA_FAILURES) await ctx.db.delete(staffSessions).where(eq(staffSessions.token, token));
+    else await ctx.db.update(staffSessions).set({ mfaFailures: failures }).where(eq(staffSessions.token, token));
+    await audit(ctx.db, { type: "STAFF", id: sess.staffId }, "staff.mfa_failed", "staff", sess.staffId, { failures });
+    fail(failures >= MAX_MFA_FAILURES ? "SESSION_EXPIRED" : "INVALID_MFA");
+  }
   await ctx.db.update(staffSessions).set({ mfaVerified: true }).where(eq(staffSessions.token, token));
   if (!s.totpEnrolledAt) await ctx.db.update(staff).set({ totpEnrolledAt: ctx.now() }).where(eq(staff.id, s.id));
   await audit(ctx.db, { type: "STAFF", id: s.id }, "staff.login", "staff", s.id);

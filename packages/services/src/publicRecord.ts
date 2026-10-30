@@ -1,5 +1,5 @@
 import { DRAW_PUBLISHED, type LotteryStatus } from "@boxrush/core";
-import { and, asc, eq, lotteries, merchants, ne, openedCards, openingMarkers, openingRecords, openingSessions, slots, videoSegments, type DbOrTx } from "@boxrush/db";
+import { and, asc, eq, lotteries, merchants, ne, openedCards, openingMarkers, openingRecords, openingSessions, slots, sql, videoSegments, type DbOrTx } from "@boxrush/db";
 
 /**
  * SV6 / V01. Everything here is public and pseudonymous (T9): no user ids, no names.
@@ -58,4 +58,10 @@ export type OpeningRecord = NonNullable<Awaited<ReturnType<typeof buildOpeningRe
 export async function frozenRecord(db: DbOrTx, lotteryId: string) {
   const [r] = await db.select().from(openingRecords).where(eq(openingRecords.lotteryId, lotteryId));
   return r ?? null;
+}
+
+/** The immutable record exactly as hashed: SHA-256 of `text` equals `recordHash`. */
+export async function frozenRecordText(db: DbOrTx, lotteryId: string): Promise<{ text: string; recordHash: string } | null> {
+  const r = await db.execute<{ text: string; record_hash: string }>(sql`SELECT record::text AS text, record_hash FROM opening_records WHERE lottery_id = ${lotteryId}`);
+  return r.rows[0] ? { text: r.rows[0].text, recordHash: r.rows[0].record_hash } : null;
 }

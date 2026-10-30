@@ -7,7 +7,7 @@ import { StationConsole } from "./StationConsole";
 
 export default async function StationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const staff = await requirePageRole("STATION");
+  const staff = await requirePageRole("STATION", "REVIEWER");
   const t = await getTranslations("station");
   const v = await stationDetail(ctx(), staff, id);
   return (
