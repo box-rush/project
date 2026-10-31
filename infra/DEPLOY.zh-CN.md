@@ -78,7 +78,7 @@ aws cloudformation describe-stacks --stack-name boxrush-github-deploy-staging --
 | 后台二段階認証 | 认证应用里手动添加密钥 `JBSWY3DPEHPK3PXP`（所有测试员工共用，只用于测试） |
 
 其他操作：action `status` 打印最近日志与告警；action `remove` 删除整个 staging（`confirm` 里填 `staging`）。
-**不用时建议 remove**：staging 常驻约每月 100 美元上下（NAT、RDS、负载均衡器、Fargate 为主，⚠️ 估算，以账单为准）。
+**不用时建议 remove**：staging 常驻约每月 150–200 美元（NAT、2 个负载均衡器、RDS、Fargate、WAF、Secrets Manager 为主；⚠️ 粗略估算，以账单为准）。
 
 以后要接真实服务时：设置 Stripe / Twilio 等密钥（第 4、6 节），把 `BOXRUSH_TEST_MODE` 改成 `0` 或删掉，重新部署。
 
