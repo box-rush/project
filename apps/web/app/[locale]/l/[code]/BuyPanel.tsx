@@ -1,18 +1,23 @@
 "use client";
-import { useState, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useCallback, useRef, useState, useTransition } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { formatYen } from "@boxrush/core/format";
 import { Link, useRouter } from "@/i18n/routing";
 import { startCheckout } from "@/lib/actions/purchase";
 import { ErrorText } from "@/components/ErrorText";
+import { Turnstile } from "@/components/Turnstile";
 
-export function BuyPanel(props: { lotteryId: string; price: number; max: number; perUserLimit: number; loggedIn: boolean; phoneVerified: boolean; monthRemaining: number | null; code: string }) {
+export function BuyPanel(props: { lotteryId: string; price: number; max: number; perUserLimit: number; loggedIn: boolean; phoneVerified: boolean; monthRemaining: number | null; code: string; turnstileSiteKey: string | null }) {
   const t = useTranslations();
   const router = useRouter();
   const [count, setCount] = useState(1);
   const [err, setErr] = useState<{ code: string; params?: Record<string, unknown> } | null>(null);
   const [night, setNight] = useState<number | null>(null);
   const [pending, start] = useTransition();
+  const locale = useLocale();
+  const [human, setHuman] = useState<string | null>(null);
+  const resetHuman = useRef<() => void>(() => {});
+  const onToken = useCallback((t: string | null) => setHuman(t), []);
 
   if (!props.loggedIn)
     return (
@@ -30,7 +35,8 @@ export function BuyPanel(props: { lotteryId: string; price: number; max: number;
   const submit = (nightConfirmed: boolean) =>
     start(async () => {
       setErr(null);
-      const r = await startCheckout(props.lotteryId, count, nightConfirmed);
+      const r = await startCheckout(props.lotteryId, count, nightConfirmed, human);
+      resetHuman.current(); // a token is single-use
       if (r.ok) router.push(`/checkout/${r.data.orderId}`);
       else if (r.code === "NIGHT_CONFIRM_REQUIRED") setNight(Number(r.params?.tonightTotal ?? 0));
       else setErr({ code: r.code, params: r.params });
@@ -53,7 +59,8 @@ export function BuyPanel(props: { lotteryId: string; price: number; max: number;
         </span>
       </div>
       {props.monthRemaining !== null && <div className="num text-xs text-ink-2">{t("checkout.monthRemaining", { amount: formatYen(props.monthRemaining) })}</div>}
-      <button type="button" className="btn btn-primary w-full" disabled={pending || props.max === 0} onClick={() => submit(false)}>
+      <Turnstile siteKey={props.turnstileSiteKey} onToken={onToken} resetRef={resetHuman} locale={locale} />
+      <button type="button" className="btn btn-primary w-full" disabled={pending || props.max === 0 || (!!props.turnstileSiteKey && !human)} onClick={() => submit(false)}>
         {t("lottery.buy")}
       </button>
       <ErrorText code={err?.code ?? null} params={err?.params} />
@@ -69,6 +76,7 @@ export function BuyPanel(props: { lotteryId: string; price: number; max: number;
               </button>
               <button
                 className="btn btn-primary flex-1"
+                disabled={!!props.turnstileSiteKey && !human}
                 onClick={() => {
                   setNight(null);
                   submit(true);

@@ -1,5 +1,8 @@
 "use server";
 import {
+  adminCreateStaff,
+  disableStaff,
+  resetStaffCredentials,
   setDefectNote,
   reportShipmentIncident,
   updateIncidentClaim,
@@ -352,4 +355,17 @@ export async function updateClaimAction(incidentId: string, _: Prev, fd: FormDat
 
 export async function defectNoteAction(lotteryId: string, cardId: string, _: Prev, fd: FormData) {
   return act((s) => setDefectNote(ctx(), s, cardId, str(fd, "defect")), { revalidate: [`/ops/attribution/${lotteryId}`], message: "saved" });
+}
+
+export async function createStaffAction(_: Prev, fd: FormData) {
+  return act((s) => adminCreateStaff(ctx(), s, { email: str(fd, "email"), name: str(fd, "name"), roles: fd.getAll("roles").map(String), merchantId: str(fd, "merchantId") || null }), {
+    revalidate: ["/ops/audit"],
+    message: "staffCreated",
+  });
+}
+export async function disableStaffAction(staffId: string, _: Prev) {
+  return act((s) => disableStaff(ctx(), s, staffId), { revalidate: ["/ops/audit"], message: "saved" });
+}
+export async function resetStaffAction(staffId: string, _: Prev) {
+  return act((s) => resetStaffCredentials(ctx(), s, staffId), { revalidate: ["/ops/audit"], message: "staffReset" });
 }

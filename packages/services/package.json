@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "seed": "tsx src/seed.ts",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "bootstrap": "tsx src/bootstrap.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1160.0",

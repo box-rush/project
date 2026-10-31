@@ -553,7 +553,8 @@
     "VALIDATION": "请检查输入内容",
     "PHONE_TAKEN": "该手机号码已被其他账号使用",
     "AUTH_FAILED": "邮箱地址或密码不正确",
-    "TOO_MANY_ATTEMPTS": "尝试次数过多，请稍后再试"
+    "TOO_MANY_ATTEMPTS": "尝试次数过多，请稍后再试",
+    "HUMAN_CHECK_FAILED": "验证未完成，请重试"
   },
   "errorPage": {
     "title": "无法显示页面",

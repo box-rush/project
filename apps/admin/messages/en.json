@@ -138,7 +138,9 @@
     "aborted": "This lottery was aborted; full refunds are being issued",
     "openingFinished": "Opening finished; sent to attribution",
     "deviceRegistered": "Device registered",
-    "uploaded": "Uploaded"
+    "uploaded": "Uploaded",
+    "staffCreated": "Staff added",
+    "staffReset": "Reset done"
   },
   "errors": {
     "UNKNOWN": "Something went wrong ({code})",
@@ -237,7 +239,10 @@
     "DOCUMENT_REQUIRED": "Choose a file",
     "DOCUMENT_TOO_LARGE": "Files up to {max}",
     "DOCUMENT_TYPE": "Only PDF, JPEG, PNG and WebP",
-    "DOCUMENT_TAMPERED": "The file does not match its record"
+    "DOCUMENT_TAMPERED": "The file does not match its record",
+    "INVALID_STAFF": "Check the name, e-mail and roles",
+    "MERCHANT_REQUIRED": "The merchant role needs a merchant",
+    "CANNOT_DISABLE_SELF": "You cannot disable yourself"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -1035,7 +1040,15 @@
     "notEnrolled": "Not enrolled",
     "state": "State",
     "active": "Active",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "merchant": "Merchant (merchant role only)",
+    "newStaff": "Add staff",
+    "createStaff": "Add and issue a one-time password",
+    "tempPassword": "One-time password (shown only here; pass it on securely; two-factor is registered at first login)",
+    "reset": "Reset password and two-factor",
+    "resetConfirm": "Reset the password and two-factor of this person and end their sessions?",
+    "disable": "Disable",
+    "disableConfirm": "Disable this person and sign them out now?"
   },
   "monitoring": {
     "title": "Monitoring",

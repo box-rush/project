@@ -138,7 +138,9 @@
     "aborted": "本场已中止，将全额退款",
     "openingFinished": "开盒完成，已转入归属",
     "deviceRegistered": "设备已登记",
-    "uploaded": "已上传"
+    "uploaded": "已上传",
+    "staffCreated": "已新增员工",
+    "staffReset": "已重置"
   },
   "errors": {
     "UNKNOWN": "发生错误（{code}）",
@@ -237,7 +239,10 @@
     "DOCUMENT_REQUIRED": "请选择文件",
     "DOCUMENT_TOO_LARGE": "文件不能超过 {max}",
     "DOCUMENT_TYPE": "仅支持 PDF、JPEG、PNG、WebP",
-    "DOCUMENT_TAMPERED": "文件与记录不一致"
+    "DOCUMENT_TAMPERED": "文件与记录不一致",
+    "INVALID_STAFF": "请检查姓名、邮箱和角色",
+    "MERCHANT_REQUIRED": "商家角色需要选择所属商家",
+    "CANNOT_DISABLE_SELF": "不能停用自己"
   },
   "issues": {
     "SCHEMA": "输入不完整或格式不正确（{field}）",
@@ -1035,7 +1040,15 @@
     "notEnrolled": "未绑定",
     "state": "状态",
     "active": "有效",
-    "disabled": "已停用"
+    "disabled": "已停用",
+    "merchant": "所属商家（仅商家角色）",
+    "newStaff": "新增员工",
+    "createStaff": "新增并发放临时密码",
+    "tempPassword": "临时密码（只在此显示一次。请用安全的方式告知本人，首次登录时登记两步验证）",
+    "reset": "重置密码与两步验证",
+    "resetConfirm": "将重置该员工的密码和两步验证，并结束其登录会话。确定吗？",
+    "disable": "停用",
+    "disableConfirm": "将停用该员工并立即登出。确定吗？"
   },
   "monitoring": {
     "title": "监控",

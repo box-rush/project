@@ -138,7 +138,9 @@
     "aborted": "この開封会は中止されました。全額返金の手続きに入ります",
     "openingFinished": "開封を完了し、振り分けへ送りました",
     "deviceRegistered": "デバイスを登録しました",
-    "uploaded": "アップロードしました"
+    "uploaded": "アップロードしました",
+    "staffCreated": "スタッフを追加しました",
+    "staffReset": "再設定しました"
   },
   "errors": {
     "UNKNOWN": "エラーが発生しました（{code}）",
@@ -237,7 +239,10 @@
     "DOCUMENT_REQUIRED": "ファイルを選んでください",
     "DOCUMENT_TOO_LARGE": "ファイルは{max}までです",
     "DOCUMENT_TYPE": "PDF・JPEG・PNG・WebPのみアップロードできます",
-    "DOCUMENT_TAMPERED": "ファイルが記録と一致しません"
+    "DOCUMENT_TAMPERED": "ファイルが記録と一致しません",
+    "INVALID_STAFF": "氏名・メールアドレス・ロールを確認してください",
+    "MERCHANT_REQUIRED": "商家ロールには所属する商家が必要です",
+    "CANNOT_DISABLE_SELF": "自分自身は無効にできません"
   },
   "issues": {
     "SCHEMA": "入力が不足しているか、形式が正しくありません（{field}）",
@@ -1035,7 +1040,15 @@
     "notEnrolled": "未登録",
     "state": "状態",
     "active": "有効",
-    "disabled": "無効"
+    "disabled": "無効",
+    "merchant": "所属する商家（商家ロールのみ）",
+    "newStaff": "スタッフを追加",
+    "createStaff": "追加して一時パスワードを発行",
+    "tempPassword": "一時パスワード（この画面でのみ表示されます。本人に安全な方法で伝えてください。初回ログイン時に二段階認証を登録します）",
+    "reset": "パスワードと二段階認証を再設定",
+    "resetConfirm": "このスタッフのパスワードと二段階認証をリセットし、ログイン中のセッションを終了します。よろしいですか？",
+    "disable": "無効にする",
+    "disableConfirm": "このスタッフを無効にし、すぐにログアウトさせます。よろしいですか？"
   },
   "monitoring": {
     "title": "監視",

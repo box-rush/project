@@ -15,6 +15,7 @@
  * logins from infra/db-login-roles.sql, whose passwords are SST secrets.
  */
 import { monitoring } from "./monitoring";
+import { cdnAndWaf, rdsBackups } from "./security";
 
 const stage = $app.stage;
 const isProd = stage === "production";
@@ -34,10 +35,31 @@ const secret = {
   TwilioFrom: new sst.Secret("TwilioFrom", "unset"),
   // T17 error tracking; "unset" keeps Sentry off
   SentryDsn: new sst.Secret("SentryDsn", "unset"),
+  // T18: proves a request came through CloudFront (random, e.g. `openssl rand -hex 32`); required
+  OriginVerifySecret: new sst.Secret("OriginVerifySecret"),
+  // T18 human check before taking slots (Cloudflare Turnstile); "unset" = off — set both for staging / production
+  TurnstileSiteKey: new sst.Secret("TurnstileSiteKey", "unset"),
+  TurnstileSecretKey: new sst.Secret("TurnstileSecretKey", "unset"),
+};
+
+/**
+ * T18: credentials reach the containers from Secrets Manager (ECS injects them at start), never as plain values in
+ * the task definition. One secret per value, named boxrush/<stage>/<NAME>.
+ */
+const secretArns = new Map<string, $util.Output<string>>();
+const sm = (name: string, value: $util.Input<string>) => {
+  if (!secretArns.has(name)) {
+    const s = new aws.secretsmanager.Secret(`Sm${name}`, { name: `boxrush/${stage}/${name}`, recoveryWindowInDays: isProd ? 30 : 0 });
+    new aws.secretsmanager.SecretVersion(`Sm${name}Value`, { secretId: s.id, secretString: value });
+    secretArns.set(name, s.arn);
+  }
+  return secretArns.get(name)!;
 };
 
 const domain = process.env.BOXRUSH_DOMAIN; // e.g. boxrush.jp (production) / stg.boxrush.jp
 const webHost = domain ?? undefined;
+// the web load balancer is CloudFront's origin, on its own name; people use webHost (CloudFront)
+const webOriginHost = domain ? `origin.${domain}` : undefined;
 const adminHost = domain ? `admin.${domain}` : undefined;
 
 // ── network & database ──────────────────────────────────────────────────────────────────────────
@@ -93,24 +115,26 @@ const email = domain ? new sst.aws.Email("Email", { sender: domain, dmarc: "v=DM
 const common = {
   NODE_ENV: "production",
   AWS_REGION: "ap-northeast-1",
-  DATABASE_URL: appDbUrl,
-  PSEUDONYM_KEY: secret.PseudonymKey.value,
   WEB_BASE_URL: webHost ? `https://${webHost}` : "http://localhost:3000",
   PAYMENT_PROVIDER: "stripe",
-  STRIPE_SECRET_KEY: secret.StripeSecretKey.value,
-  STRIPE_WEBHOOK_SECRET: secret.StripeWebhookSecret.value,
   EMAIL_PROVIDER: email ? "ses" : "console",
   EMAIL_FROM: domain ? `BOXラッシュ <no-reply@${domain}>` : "",
   LINE_PROVIDER: "line",
-  LINE_CHANNEL_ACCESS_TOKEN: secret.LineChannelAccessToken.value,
   // KDDI Message Cast (T10) pending its API spec; Twilio meanwhile
   SMS_PROVIDER: "twilio",
   TWILIO_ACCOUNT_SID: secret.TwilioAccountSid.value,
-  TWILIO_AUTH_TOKEN: secret.TwilioAuthToken.value,
   TWILIO_FROM: secret.TwilioFrom.value,
   AUDIT_ARCHIVE_BUCKET: auditArchive.name,
-  SENTRY_DSN: secret.SentryDsn.value,
   SENTRY_ENVIRONMENT: stage,
+};
+const commonSecrets = {
+  DATABASE_URL: sm("DATABASE_URL", appDbUrl),
+  PSEUDONYM_KEY: sm("PSEUDONYM_KEY", secret.PseudonymKey.value),
+  STRIPE_SECRET_KEY: sm("STRIPE_SECRET_KEY", secret.StripeSecretKey.value),
+  STRIPE_WEBHOOK_SECRET: sm("STRIPE_WEBHOOK_SECRET", secret.StripeWebhookSecret.value),
+  LINE_CHANNEL_ACCESS_TOKEN: sm("LINE_CHANNEL_ACCESS_TOKEN", secret.LineChannelAccessToken.value),
+  TWILIO_AUTH_TOKEN: sm("TWILIO_AUTH_TOKEN", secret.TwilioAuthToken.value),
+  SENTRY_DSN: sm("SENTRY_DSN", secret.SentryDsn.value),
 };
 
 /**
@@ -118,8 +142,8 @@ const common = {
  * commitment at approval, so it may encrypt but never decrypt. The internet-facing web service has no access to the
  * seed key or to the randomness service's DB login at all.
  */
-const rngForWorker = { RNG_DATABASE_URL: rngDbUrl, RNG_KMS_KEY_ID: seedKey.arn };
-const rngForAdmin = { RNG_DATABASE_URL: rngDbUrl, RNG_KMS_KEY_ID: seedKey.arn };
+const rngEnv = { RNG_KMS_KEY_ID: seedKey.arn };
+const rngSecrets = { RNG_DATABASE_URL: sm("RNG_DATABASE_URL", rngDbUrl) };
 const sendEmail = email ? [{ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: ["*"] }] : [];
 const permissions = {
   web: [...sendEmail],
@@ -154,17 +178,31 @@ const web = new sst.aws.Service("Web", {
     NEXT_PUBLIC_LOCALES: isProd ? "ja" : "ja,zh-Hans,en",
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: secret.StripePublishableKey.value,
     BETTER_AUTH_URL: webHost ? `https://${webHost}` : "http://localhost:3000",
-    BETTER_AUTH_SECRET: secret.BetterAuthSecret.value,
+    TURNSTILE_SITE_KEY: secret.TurnstileSiteKey.value,
+  },
+  ssm: {
+    ...commonSecrets,
+    BETTER_AUTH_SECRET: sm("BETTER_AUTH_SECRET", secret.BetterAuthSecret.value),
+    ORIGIN_VERIFY_SECRET: sm("ORIGIN_VERIFY_SECRET", secret.OriginVerifySecret.value),
+    TURNSTILE_SECRET_KEY: sm("TURNSTILE_SECRET_KEY", secret.TurnstileSecretKey.value),
   },
   loadBalancer: {
-    domain: webHost,
-    rules: webHost
+    domain: webOriginHost,
+    rules: webOriginHost
       ? [
           { listen: "80/http", redirect: "443/https" },
           { listen: "443/https", forward: "3000/http" },
         ]
       : [{ listen: "80/http", forward: "3000/http" }],
     health: { "3000/http": { path: "/api/health", interval: "15 seconds" } },
+  },
+  transform: {
+    // T18: only CloudFront may reach the web load balancer (no bypassing the WAF); the app additionally checks the
+    // x-origin-verify secret before trusting the client IP header
+    loadBalancerSecurityGroup: (args) => {
+      const cf = aws.ec2.getManagedPrefixListOutput({ name: "com.amazonaws.global.cloudfront.origin-facing" });
+      args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, prefixListIds: [cf.id] }));
+    },
   },
 });
 
@@ -177,7 +215,8 @@ const admin = new sst.aws.Service("Admin", {
   memory: "0.5 GB",
   scaling: { min: 1, max: 2 },
   permissions: permissions.admin,
-  environment: { ...common, ...rngForAdmin, DOCUMENTS_BUCKET: documentsBucket.name },
+  environment: { ...common, ...rngEnv, DOCUMENTS_BUCKET: documentsBucket.name },
+  ssm: { ...commonSecrets, ...rngSecrets },
   loadBalancer: {
     domain: adminHost,
     rules: adminHost
@@ -208,7 +247,8 @@ const worker = new sst.aws.Service("Worker", {
   // the reconcile loop and archive assume a single worker
   scaling: { min: 1, max: 1 },
   permissions: permissions.worker,
-  environment: { ...common, ...rngForWorker, WORKER_HEARTBEAT_FILE: "/tmp/boxrush-worker-heartbeat" },
+  environment: { ...common, ...rngEnv, WORKER_HEARTBEAT_FILE: "/tmp/boxrush-worker-heartbeat" },
+  ssm: { ...commonSecrets, ...rngSecrets },
   // the loop touches the heartbeat file every few seconds; a wedged worker is replaced (SIGTERM lets it finish jobs in hand)
   health: {
     command: ["CMD-SHELL", "node -e \"process.exit(Date.now() - require('fs').statSync('/tmp/boxrush-worker-heartbeat').mtimeMs < 120000 ? 0 : 1)\""],
@@ -223,11 +263,15 @@ new sst.aws.Task("Migrate", {
   cluster,
   image: image("worker"),
   command: ["packages/db/node_modules/.bin/tsx", "packages/db/src/migrate.ts"],
-  environment: { DATABASE_URL: ownerDbUrl },
+  ssm: { DATABASE_URL: sm("OWNER_DATABASE_URL", ownerDbUrl) },
 });
+
+// T18: CloudFront + WAF in front of the web app; production backups copied to Osaka
+const { router: webCdn } = cdnAndWaf({ stage, isProd, webHost, originUrl: web.url, originVerify: secret.OriginVerifySecret.value });
+if (isProd) rdsBackups({ stage, dbArn: db.nodes.instance!.arn });
 
 // T17: log metric filters, alarms and the SNS topic they notify
 const { alertTopic } = monitoring({ stage, isProd, db, web, admin, worker });
 
 // printed by `sst deploy`: the consumer site (and public verifier) and the back office
-export const outputs = { web: web.url, admin: admin.url, seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };
+export const outputs = { web: webCdn.url, webOrigin: web.url, admin: admin.url, seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };

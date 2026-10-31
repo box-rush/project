@@ -194,6 +194,7 @@ export default async function LotteryPage({ params }: { params: Promise<{ locale
               phoneVerified={!!user?.phoneNumberVerified}
               monthRemaining={summary?.monthRemaining ?? null}
               code={code}
+              turnstileSiteKey={process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SITE_KEY !== "unset" ? process.env.TURNSTILE_SITE_KEY : null}
             />
           ) : (
             <div className="btn btn-ghost w-full opacity-60">{l.status === "ON_SALE" ? t("lottery.soldOut") : t("lottery.notOnSale")}</div>

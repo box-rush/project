@@ -1,7 +1,7 @@
 "use server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { eq, orders } from "@boxrush/db";
-import { assignArm, handlePaymentEvent, holdSlots, MockPaymentProvider, recordEvent, releaseHold, requestOverdueRefund } from "@boxrush/services";
+import { assignArm, clientIp, enforceHoldRateLimit, handlePaymentEvent, holdSlots, verifyTurnstile, MockPaymentProvider, recordEvent, releaseHold, requestOverdueRefund } from "@boxrush/services";
 import { getCtx } from "@/lib/ctx";
 import { getSessionUser } from "@/lib/session";
 import { run, type ActionResult } from "@/lib/result";
@@ -14,9 +14,13 @@ async function me() {
 }
 
 /** F4.6 / F4.9: hold N random slots for 10 minutes and create the payment. */
-export async function startCheckout(lotteryId: string, count: number, nightConfirmed: boolean): Promise<ActionResult<{ orderId: string }>> {
+export async function startCheckout(lotteryId: string, count: number, nightConfirmed: boolean, humanToken?: string | null): Promise<ActionResult<{ orderId: string }>> {
   return run(async () => {
     const u = await me();
+    // T18: slots are the one contended resource — rate-limit per account and IP, and require the human check
+    const ip = clientIp(await headers());
+    await enforceHoldRateLimit(getCtx(), u.id, ip);
+    if (!(await verifyTurnstile(humanToken, ip))) throw new DomainError("HUMAN_CHECK_FAILED");
     const arm = assignArm("show_reference_price", u.id, ["on", "off"]);
     const h = await holdSlots(getCtx(), u.id, lotteryId, count, { nightConfirmed, experimentArms: { show_reference_price: arm } });
     return { orderId: h.orderId };

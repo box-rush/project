@@ -10,6 +10,7 @@ import { expireUnpaidShipment, forcedCharge, forcedShipmentSweepAll, storageRemi
 import { couponExpiryNotices } from "./coupons";
 import { dispatchNotifications } from "./notifications";
 import { reportError } from "./errorReporter";
+import { pruneRateLimits } from "./rateLimit";
 
 export const handlers: Record<string, JobHandler> = {
   "lottery.closeSale": (ctx, p) => closeSale(ctx, String(p.lotteryId)),
@@ -71,6 +72,7 @@ export async function dailySweeps(ctx: Ctx, shouldStop: () => boolean = () => fa
   const { failed } = await forcedShipmentSweepAll(ctx, shouldStop);
   await couponExpiryNotices(ctx);
   await storageReminder(ctx);
+  await pruneRateLimits(ctx.db, ctx.now());
   if (failed) console.warn(`[alert] forced-shipment sweep: ${failed} user(s) failed, retried tomorrow`);
 }
 

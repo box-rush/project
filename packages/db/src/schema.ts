@@ -6,6 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
   index,
@@ -862,6 +863,21 @@ export const stationDevices = pgTable("station_devices", {
   createdAt: ts("created_at").notNull().defaultNow(),
   lastSeenAt: ts("last_seen_at"),
   revokedAt: ts("revoked_at"),
+});
+
+/** T18 fixed-window rate limits shared by every app instance (key = purpose:subject, e.g. hold:user:<id>). */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: ts("window_start").notNull(),
+  count: integer("count").notNull(),
+});
+
+/** Better Auth's own rate limiter, stored in the database so the limit holds across web tasks and deploys (T18). */
+export const authRateLimits = pgTable("auth_rate_limits", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 });
 
 /** T13 job queue: state change and its next job are written in the same transaction. */

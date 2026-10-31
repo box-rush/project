@@ -12,19 +12,29 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 | ECS task `Migrate` | worker image, runs migrations as the RDS owner |
 | KMS key `SeedKey` | server-seed encryption (T11); only the services' task role may use it |
 | S3 `AuditArchive` | Object Lock compliance mode (10 years in production) for the hourly audit export (T7) |
+| CloudFront `WebCdn` + WAF `boxrush-<stage>-web` (us-east-1) | public entry for the web app (T18): AWS managed rules, 2,000 req / 5 min and 300 POST / 5 min per IP; CDN for static assets and frozen records; the web load balancer accepts only CloudFront (`origin.<domain>`) |
+| AWS Backup (production) | daily RDS backup kept 35 days, copied to Osaka (ap-northeast-3) |
+| Secrets Manager `boxrush/<stage>/*` | every credential the containers read (T18) |
 | S3 `Documents` | private, versioned; merchants' purchase proofs (F16.3), written and read only by `Admin` (`DOCUMENTS_BUCKET`) |
 | SES identity | when `BOXRUSH_DOMAIN` is set; SPF / DKIM / DMARC records via SST (T5, P15) |
 
 ## First deploy of a stage
+A step-by-step guide in Chinese (account setup, IAM Identity Center, domains, external services, first admin) is in
+[`DEPLOY.zh-CN.md`](DEPLOY.zh-CN.md).
+
 1. AWS credentials for the target account; `export BOXRUSH_DOMAIN=stg.example.jp` (optional, enables HTTPS + SES); `export ADMIN_ALLOWED_CIDRS=203.0.113.0/24` (office / VPN).
 2. Secrets (one time per stage):
    ```bash
-   for s in BetterAuthSecret PseudonymKey DbAppPassword DbRngPassword; do npx sst secret set $s "$(openssl rand -hex 32)" --stage staging; done
+   for s in BetterAuthSecret PseudonymKey DbAppPassword DbRngPassword OriginVerifySecret; do npx sst secret set $s "$(openssl rand -hex 32)" --stage staging; done
    npx sst secret set StripeSecretKey sk_test_... --stage staging
    npx sst secret set StripeWebhookSecret whsec_... --stage staging
    npx sst secret set StripePublishableKey pk_test_... --stage staging
-   # optional: LineChannelAccessToken, TwilioAccountSid, TwilioAuthToken, TwilioFrom
+   npx sst secret set TurnstileSiteKey 0x4AAA... --stage staging     # Cloudflare Turnstile widget for the site's domain
+   npx sst secret set TurnstileSecretKey 0x4AAA... --stage staging
+   # optional: LineChannelAccessToken, TwilioAccountSid, TwilioAuthToken, TwilioFrom, SentryDsn
    ```
+   Credentials reach the containers through Secrets Manager (`boxrush/<stage>/<NAME>`, created by the deploy); the
+   task definitions hold only their ARNs.
    `PseudonymKey` must never change for a stage (public pseudonyms would change).
 3. `npx sst deploy --stage staging` — services start but cannot log in to the DB yet.
 4. Migrations: `npx sst shell --stage staging -- node infra/run-migrate.mjs`
@@ -34,6 +44,8 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
    ```
    The apps connect as `boxrush_app_login`, the randomness service as `boxrush_rng_login`. **Never** point
    `DATABASE_URL` at the owner: that silently removes the T11 / G5 permission domains.
+5b. First admin (once): `BOOTSTRAP_ADMIN_EMAIL=… BOOTSTRAP_ADMIN_PASSWORD=… DATABASE_URL=… pnpm --filter @boxrush/services bootstrap`
+   through `sst tunnel`; the admin registers TOTP at first login and creates every other staff account on O17.
 6. Stripe: webhook endpoint `https://<domain>/api/webhooks/stripe` for `payment_intent.succeeded` and `payment_intent.payment_failed`.
 7. SES: leave the sandbox for the domain before go-live.
 8. Station cameras: an ADMIN registers each capture device on O20 (監視 → 録画デバイス); the token is shown once.
@@ -71,8 +83,7 @@ the database fails or the oldest due job is more than 5 minutes late).
   and so is placing the audit archive bucket in that account.
 - **Images are built in CI but not yet pushed or run on AWS**: the `images` job builds all three targets, and the
   layout was checked locally by running the standalone servers and the worker; a first `sst deploy` is still to do.
-- CDN caching for the public verification pages (pages are rendered per request), WAF + Turnstile (T18),
-  AWS Budgets (P11), cross-region copy to Osaka (P12), RDS Proxy.
+- AWS Budgets (P11), RDS Proxy, the AWS Organizations split into production / randomness / audit-archive accounts with
+  IAM Identity Center (T18 — an account-level setup, see `infra/DEPLOY.zh-CN.md`).
 - KDDI Message Cast (Twilio is wired meanwhile), Amazon IVS station pipeline (T2), Yamato B2 (T14).
-- Secrets are passed as ECS environment variables; moving them to Secrets Manager references is a follow-up.
 - Seed key access per service: worker Encrypt + Decrypt, admin Encrypt only, web none (T11 least privilege).

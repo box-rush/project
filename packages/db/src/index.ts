@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 export * as schema from "./schema";
 export * from "./schema";
-export { sql, eq, and, or, not, inArray, isNull, isNotNull, desc, asc, gt, gte, lt, lte, ne, count, sum } from "drizzle-orm";
+export { sql, eq, and, or, not, inArray, isNull, isNotNull, desc, asc, gt, gte, lt, lte, ne, count, sum, arrayContains } from "drizzle-orm";
 
 export type Db = NodePgDatabase<typeof schema>;
 /** Transaction handle has the same query API. */
