@@ -722,7 +722,10 @@
     "finishConfirm": "已录入 {n} 张。确定完成开盒并转入归属？",
     "abortPendingTitle": "已报告录像两路同时中断",
     "abortPendingHelp": "工位已冻结。由另一名人员（开盒或审核）确认后，本场中止并全额退款。不能继续开盒。",
-    "confirmAbort": "确认中止（另一名人员）"
+    "confirmAbort": "确认中止（另一名人员）",
+    "pendingAbortsTitle": "有 {n} 条录像两路中断报告等待确认",
+    "pendingAbortsMine": "你提交的报告（等待其他人确认）",
+    "pendingAbortsOpen": "去确认"
   },
   "attribution": {
     "title": "归属工作台",

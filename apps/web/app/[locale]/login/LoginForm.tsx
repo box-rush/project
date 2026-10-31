@@ -33,7 +33,8 @@ export function LoginForm({ mode, next, providers }: { mode: "login" | "signup";
           setErr(null);
           const res = mode === "signup" ? await authClient.signUp.email({ email, password, name: name || email.split("@")[0]! }) : await authClient.signIn.email({ email, password });
           setBusy(false);
-          if (res.error) return setErr(mode === "signup" ? "VALIDATION" : "AUTH_FAILED");
+          // 429: the per-IP throttle — never tell the user their password is wrong when it was not checked
+          if (res.error) return setErr(res.error.status === 429 ? "TOO_MANY_ATTEMPTS" : mode === "signup" ? "VALIDATION" : "AUTH_FAILED");
           await done();
         }}
       >

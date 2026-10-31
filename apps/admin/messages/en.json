@@ -722,7 +722,10 @@
     "finishConfirm": "{n} cards entered. Finish and send to attribution?",
     "abortPendingTitle": "Both recording paths reported down",
     "abortPendingHelp": "The station is frozen. Once a different staff member (station or reviewer) confirms, this opening is aborted and fully refunded. It cannot continue.",
-    "confirmAbort": "Confirm abort (different staff member)"
+    "confirmAbort": "Confirm abort (different staff member)",
+    "pendingAbortsTitle": "{n} report(s) of both recording paths lost await confirmation",
+    "pendingAbortsMine": "Your report (waiting for another person)",
+    "pendingAbortsOpen": "Confirm"
   },
   "attribution": {
     "title": "Attribution",

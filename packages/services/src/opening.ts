@@ -127,6 +127,17 @@ export async function escalatePendingAborts(ctx: Ctx) {
   return { alerts, errors };
 }
 
+/** X7 reports waiting for a second person (shown to STATION and REVIEWER staff with a link to confirm). */
+export async function pendingRecordingAborts(ctx: Ctx, p: StaffPrincipal) {
+  requireRole(p, "STATION", "REVIEWER");
+  return ctx.db
+    .select({ lotteryId: lotteries.id, code: lotteries.code, title: lotteries.title, requestedAt: openingSessions.abortRequestedAt, requestedBy: openingSessions.abortRequestedBy })
+    .from(openingSessions)
+    .innerJoin(lotteries, eq(lotteries.id, openingSessions.lotteryId))
+    .where(and(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"), eq(lotteries.status, "OPENING")))
+    .orderBy(asc(openingSessions.abortRequestedAt));
+}
+
 async function assertRecordingUsable(tx: DbOrTx, lotteryId: string) {
   const [s] = await tx.select({ state: openingSessions.recordingState }).from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
   if (s?.state === "BOTH_DOWN_PENDING") fail("RECORDING_INTERRUPTED");

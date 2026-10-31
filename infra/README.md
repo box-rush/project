@@ -35,7 +35,10 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
    `DATABASE_URL` at the owner: that silently removes the T11 / G5 permission domains.
 6. Stripe: webhook endpoint `https://<domain>/api/webhooks/stripe` for `payment_intent.succeeded` and `payment_intent.payment_failed`.
 7. SES: leave the sandbox for the domain before go-live.
-8. Smoke: `E2E_BASE_URL=https://<domain> npx playwright test tests/e2e/consumer.spec.ts -g verification`.
+8. Station cameras: an ADMIN registers each capture device on O20 (監視 → 録画デバイス); the token is shown once.
+   The device posts every segment to `https://<admin domain>/api/devices/segments` with `Authorization: Bearer <token>`,
+   so the station network must be inside `ADMIN_ALLOWED_CIDRS`. Revoke a lost device's token on the same page.
+9. Smoke: `E2E_BASE_URL=https://<domain> npx playwright test tests/e2e/consumer.spec.ts -g verification`.
 
 Every later deploy: `npx sst deploy --stage <stage>`, then step 4 if `packages/db/migrations` changed.
 Migrations must stay backward compatible (§10.12); no deploys from 2 h before an opening until attribution is done.

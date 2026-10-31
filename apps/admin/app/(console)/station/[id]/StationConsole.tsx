@@ -187,6 +187,7 @@ export function StationConsole({
           <button className="btn btn-danger" disabled={pending} onClick={() => run(() => confirmAbortAction(lottery.id))}>
             {t("confirmAbort")}
           </button>
+          <ResultMessage result={result} />
         </div>
       </div>
     );

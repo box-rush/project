@@ -1,8 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import pg from "pg";
-import { totp } from "../../packages/services/src/staffAuth";
+import type { ChildProcess } from "node:child_process";
+import { expect, test } from "@playwright/test";
+import { ADMIN, consumerPage, database, expectSaved as saved, staffPage, startWorker, stopWorker, WEB } from "./helpers";
 
 /**
  * Functional test of the whole first-release chain through the real UIs (§8.4.1), no service calls:
@@ -10,53 +9,21 @@ import { totp } from "../../packages/services/src/staffAuth";
  * device-posted recording segments → two-person attribution → put-away → shipping request → pack → ship →
  * delivered → COMPLETED, then the public verification page recomputes the draw.
  */
-const WEB = process.env.E2E_BASE_URL ?? "http://localhost:3100";
-const ADMIN = process.env.E2E_ADMIN_URL ?? "http://localhost:3101";
-const DB = process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush";
 const RUN = Date.now().toString(36).toUpperCase();
-
-let db: pg.Client;
+const { q, end: endDb } = database();
 let worker: ChildProcess | undefined;
-const q = async <T = Record<string, unknown>>(sql: string, args: unknown[] = []) => (await db.query(sql, args)).rows as T[];
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(240_000);
 test.use({ actionTimeout: 15_000 });
 
-test.beforeAll(async () => {
-  db = new pg.Client({ connectionString: DB });
-  await db.connect();
-  // T13: the draw and every timed step run in the worker, exactly as in production
-  worker = spawn("pnpm", ["--filter", "@boxrush/services", "worker"], { stdio: "ignore", env: { ...process.env, RNG_SEED_KEY: process.env.RNG_SEED_KEY ?? "00".repeat(32), RNG_DATABASE_URL: process.env.RNG_DATABASE_URL ?? DB }, detached: true });
+test.beforeAll(() => {
+  worker = startWorker();
 });
-
 test.afterAll(async () => {
-  if (worker?.pid) process.kill(-worker.pid, "SIGTERM");
-  await db?.end();
+  stopWorker(worker);
+  await endDb();
 });
-
-async function staffPage(browser: Browser, email: string) {
-  const page = await (await browser.newContext({ baseURL: ADMIN, locale: "ja-JP", timezoneId: "Asia/Tokyo" })).newPage();
-  page.on("dialog", (d) => d.accept());
-  await page.goto("/login");
-  await page.getByLabel("メールアドレス").fill(email);
-  await page.getByLabel("パスワード").fill("boxrush-dev");
-  await page.getByRole("button", { name: "次へ" }).click();
-  await page.getByLabel("認証コード（6桁）").fill(totp("JBSWY3DPEHPK3PXP", new Date()));
-  await page.getByRole("button", { name: "ログイン" }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
-  return page;
-}
-
-async function consumerPage(browser: Browser, email: string) {
-  const page = await (await browser.newContext({ baseURL: WEB, locale: "ja-JP", timezoneId: "Asia/Tokyo" })).newPage();
-  await page.goto("/login");
-  await page.getByLabel("メールアドレス").fill(email);
-  await page.getByLabel("パスワード").fill("boxrush-demo");
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
-  return page;
-}
 
 /** datetime-local value in JST, `minutes` from now. */
 function jstLocal(minutes: number) {
@@ -64,11 +31,6 @@ function jstLocal(minutes: number) {
   return d.toISOString().slice(0, 16);
 }
 
-const saved = async (page: Page) => {
-  await expect(page.locator("p[role=status], p[role=alert]").first()).toBeVisible();
-  const errs = await page.locator("p[role=alert]").allInnerTexts();
-  expect(errs, page.url()).toEqual([]);
-};
 
 test("full chain through the UI: intake → listing → sale → draw → opening → attribution → shipping → completed", async ({ browser }) => {
   const product = (await q<{ id: string; series: string }>("SELECT id, series FROM products WHERE series LIKE '%星海のきらめき%' LIMIT 1"))[0]!;
@@ -267,7 +229,7 @@ test("full chain through the UI: intake → listing → sale → draw → openin
     const shipment = (await q<{ id: string; code: string }>("SELECT id, code FROM shipments WHERE user_id = (SELECT id FROM users WHERE email = $1) ORDER BY requested_at DESC LIMIT 1", [email]))[0]!;
     await expect.poll(() => shipStatus(shipment.id)).toBe("REQUESTED");
     await wh.goto("/ops/warehouse?tab=req");
-    await wh.getByRole("row", { name: new RegExp(shipment.code) }).getByRole("button", { name: "ピッキング開始" }).click();
+    await wh.getByRole("row", { name: new RegExp(`#${shipment.code}(?!\\d)`) }).getByRole("button", { name: "ピッキング開始" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("PICKING");
     await wh.goto("/ops/warehouse?tab=pack");
     const scan = wh.getByLabel("スキャン（Enterで1件）");
@@ -288,7 +250,7 @@ test("full chain through the UI: intake → listing → sale → draw → openin
     await u.goto(`/shipments/${shipment.id}`);
     await expect(u.getByText(tracking)).toBeVisible(); // F9.4
     await wh.goto("/ops/warehouse?tab=out");
-    await wh.getByRole("row", { name: new RegExp(shipment.code) }).getByRole("button", { name: "配達完了にする" }).click();
+    await wh.getByRole("row", { name: new RegExp(`#${shipment.code}(?!\\d)`) }).getByRole("button", { name: "配達完了にする" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("DELIVERED");
     await u.context().close();
   }

@@ -722,7 +722,10 @@
     "finishConfirm": "{n}枚を入力しました。開封を完了して振り分けへ送りますか？",
     "abortPendingTitle": "録画が両系統とも途切れたと報告されました",
     "abortPendingHelp": "ステーションは停止しています。別の担当者（開封担当または審査担当）が確認すると、この開封会は中止・全額返金になります。続行はできません。",
-    "confirmAbort": "中止を確認する（別の担当者）"
+    "confirmAbort": "中止を確認する（別の担当者）",
+    "pendingAbortsTitle": "録画の両系統断の報告が {n} 件、確認待ちです",
+    "pendingAbortsMine": "あなたの報告（別の担当者の確認待ち）",
+    "pendingAbortsOpen": "確認する"
   },
   "attribution": {
     "title": "振り分け",

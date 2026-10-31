@@ -151,7 +151,7 @@ export async function stationLotteries(ctx: Ctx, p: StaffPrincipal) {
 
 /** Station view plus the keypad hint of the subject product (T4) and seal photos from intake. */
 export async function stationDetail(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
-  requireRole(p, "STATION");
+  requireRole(p, "STATION", "REVIEWER"); // a reviewer may be the second person who confirms an X7 abort
   const view = await stationView(ctx, lotteryId);
   const snap = view.lottery.snapshot as { subject?: { productId: string }[]; subjectUnits?: { label: string; sealPhotoUrls: string[] }[]; checklist?: unknown[] } | null;
   const productIds = (snap?.subject ?? []).map((s) => s.productId);

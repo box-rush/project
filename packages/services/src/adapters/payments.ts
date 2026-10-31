@@ -44,6 +44,13 @@ export class MockPaymentProvider implements PaymentProvider {
   declineSaved = false;
   private seq = 0;
 
+  /**
+   * crossProcess: in local dev the web app, the back office and the worker each hold their own mock, so a payment
+   * made through the web is unknown to the worker that refunds it. With this flag a refund of an unknown `mock_pi_`
+   * reference succeeds (the DB still caps refunds at the order amount). Tests keep the strict default.
+   */
+  constructor(private readonly opts: { crossProcess?: boolean } = {}) {}
+
   async createPayment(input: CreatePaymentInput) {
     const existing = [...this.payments.entries()].find(([, p]) => p.input.idempotencyKey === input.idempotencyKey);
     if (existing) {
@@ -67,6 +74,10 @@ export class MockPaymentProvider implements PaymentProvider {
     const dup = this.refunds.find((r) => r.key === input.idempotencyKey);
     if (dup) return { refundRef: `re_${dup.key}` };
     const p = this.payments.get(input.ref);
+    if (!p && this.opts.crossProcess && input.ref.startsWith("mock_pi_")) {
+      this.refunds.push({ ref: input.ref, amount: input.amount, key: input.idempotencyKey });
+      return { refundRef: `re_${input.idempotencyKey}` };
+    }
     if (!p || p.status !== "SUCCEEDED") throw new Error(`cannot refund ${input.ref}`);
     if (p.refunded + input.amount > p.amount) throw new Error("refund exceeds payment");
     p.refunded += input.amount;
