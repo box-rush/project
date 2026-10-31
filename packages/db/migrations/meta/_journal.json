@@ -64,6 +64,13 @@
       "when": 1793376215328,
       "tag": "0008_platform_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793412604876,
+      "tag": "0009_station_devices",
+      "breakpoints": true
     }
   ]
 }

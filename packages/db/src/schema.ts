@@ -795,6 +795,18 @@ export const platformSettings = pgTable("platform_settings", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 
+/** SV4 capture devices: a station camera posts recording segments with its own token (stored hashed; ADMIN issues / revokes). */
+export const stationDevices = pgTable("station_devices", {
+  id: id(),
+  stationId: text("station_id").notNull(),
+  label: text("label").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdBy: text("created_by").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastSeenAt: ts("last_seen_at"),
+  revokedAt: ts("revoked_at"),
+});
+
 /** T13 job queue: state change and its next job are written in the same transaction. */
 export const jobs = pgTable(
   "jobs",

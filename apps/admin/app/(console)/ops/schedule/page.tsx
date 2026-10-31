@@ -67,7 +67,7 @@ export default async function Schedule() {
                           <summary className="cursor-pointer text-xs text-primary">{t("postDelay")}</summary>
                           <ActionForm action={postDelayAction.bind(null, r.id)} submitLabel={t("postDelaySubmit")} className="mt-2">
                             <input name="newOpeningAt" type="datetime-local" className="input mono" required aria-label={t("newOpeningAt")} />
-                            <input name="reason" className="input" placeholder={t("reason")} required />
+                            <input name="reason" className="input" aria-label={t("reason")} placeholder={t("reason")} required />
                           </ActionForm>
                         </details>
                       ) : null}

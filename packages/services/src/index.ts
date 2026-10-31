@@ -27,6 +27,7 @@ export * from "./paymentCustomer";
 export * from "./evidence";
 export * from "./archive";
 export * from "./settings";
+export * from "./devices";
 export * from "./worker";
 export * from "./runtime";
 export * from "./adapters/payments";

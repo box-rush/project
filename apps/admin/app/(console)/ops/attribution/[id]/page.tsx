@@ -163,7 +163,7 @@ export default async function AttributionDesk({ params, searchParams }: { params
                                 </option>
                               ))}
                             </select>
-                            <input name="note" className="input !min-h-7 text-xs" placeholder={t("note")} required />
+                            <input name="note" className="input !min-h-7 text-xs" aria-label={t("note")} placeholder={t("note")} required />
                           </ActionForm>
                         </details>
                       </div>
@@ -194,8 +194,8 @@ export default async function AttributionDesk({ params, searchParams }: { params
             <div className="card p-3">
               <h3 className="mb-2 text-xs font-bold">{t("correctTitle")}</h3>
               <ActionForm action={correctAction.bind(null, id)} submitLabel={t("correctSubmit")} submitClass="btn !min-h-8 text-xs">
-                <input name="raw" className="input mono text-xs" placeholder={t("number")} required />
-                <input name="videoTsSec" type="number" min={0} className="input mono text-xs" placeholder={t("tsSec")} required />
+                <input name="raw" className="input mono text-xs" aria-label={t("number")} placeholder={t("number")} required />
+                <input name="videoTsSec" type="number" min={0} className="input mono text-xs" aria-label={t("tsSec")} placeholder={t("tsSec")} required />
                 <select name="replacesCardId" className="input text-xs" defaultValue="">
                   <option value="">{t("addMissed")}</option>
                   {live.map((c) => (
@@ -204,7 +204,7 @@ export default async function AttributionDesk({ params, searchParams }: { params
                     </option>
                   ))}
                 </select>
-                <input name="note" className="input text-xs" placeholder={t("note")} required />
+                <input name="note" className="input text-xs" aria-label={t("note")} placeholder={t("note")} required />
               </ActionForm>
               <p className="mt-2 text-[11px] text-ink2">{t("correctHelp")}</p>
             </div>

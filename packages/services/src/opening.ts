@@ -55,7 +55,13 @@ export async function ingestSegment(
   const [session] = await ctx.db.select().from(openingSessions).where(eq(openingSessions.lotteryId, seg.lotteryId));
   if (!session || session.stationId !== device.stationId) fail("FORBIDDEN");
   await ctx.db.transaction(async (tx) => {
-    await tx.insert(videoSegments).values({ ...seg, backfilled: seg.backfilled ?? false }).onConflictDoNothing();
+    const inserted = await tx.insert(videoSegments).values({ ...seg, backfilled: seg.backfilled ?? false }).onConflictDoNothing().returning({ id: videoSegments.id });
+    if (!inserted.length) {
+      // a retry of the same segment is fine; a different checksum for an existing segment is tampering or a device bug
+      const [prev] = await tx.select({ sha256: videoSegments.sha256 }).from(videoSegments).where(and(eq(videoSegments.lotteryId, seg.lotteryId), eq(videoSegments.source, seg.source), eq(videoSegments.seq, seg.seq)));
+      if (prev?.sha256 !== seg.sha256) fail("SEGMENT_CONFLICT", { seq: seg.seq });
+      return;
+    }
     await audit(tx, { type: "SYSTEM", id: `device:${device.deviceId}` }, "recording.segment", "lottery", seg.lotteryId, { source: seg.source, seq: seg.seq, sha256: seg.sha256 });
   });
 }

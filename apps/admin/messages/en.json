@@ -135,7 +135,8 @@
     "openingStarted": "Opening started; recording",
     "markerAdded": "Marker recorded",
     "aborted": "This lottery was aborted; full refunds are being issued",
-    "openingFinished": "Opening finished; sent to attribution"
+    "openingFinished": "Opening finished; sent to attribution",
+    "deviceRegistered": "Device registered"
   },
   "errors": {
     "UNKNOWN": "Something went wrong ({code})",
@@ -219,7 +220,11 @@
     "INVENTORY_UNAVAILABLE": "The box or guarantee cards are already allocated to another lottery",
     "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later",
     "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes",
-    "INVALID_SETTING": "Invalid value"
+    "INVALID_SETTING": "Invalid value",
+    "INVALID_DEVICE": "Enter a station ID (A–Z, 0–9, hyphen) and a name",
+    "INVALID_SEGMENT": "The recording segment is malformed",
+    "SEGMENT_CONFLICT": "A segment with this number was already recorded with different content",
+    "UNAUTHORIZED": "Authentication failed"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -1000,6 +1005,17 @@
         "label": "Alert only (never abort automatically)",
         "help": "Keeps the two-person rule strictly; until someone confirms, the opening stays open and nobody is refunded."
       }
-    }
+    },
+    "devicesTitle": "Recording devices",
+    "devicesHelp": "Tokens the station cameras use to post recording segments (checksum and storage location). A token is shown only once, when it is issued.",
+    "deviceStation": "Station ID",
+    "deviceLabel": "Name",
+    "deviceRegister": "Register device",
+    "deviceTokenOnce": "This token is shown only this once. Configure it on the device.",
+    "deviceCreated": "Registered",
+    "deviceLastSeen": "Last received",
+    "deviceRevoke": "Revoke",
+    "deviceRevoked": "Revoked",
+    "deviceRevokeConfirm": "Revoke this device token?"
   }
 }

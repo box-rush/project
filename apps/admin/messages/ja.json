@@ -135,7 +135,8 @@
     "openingStarted": "開封を開始しました。録画中です",
     "markerAdded": "マーカーを記録しました",
     "aborted": "この開封会は中止されました。全額返金の手続きに入ります",
-    "openingFinished": "開封を完了し、振り分けへ送りました"
+    "openingFinished": "開封を完了し、振り分けへ送りました",
+    "deviceRegistered": "デバイスを登録しました"
   },
   "errors": {
     "UNKNOWN": "エラーが発生しました（{code}）",
@@ -219,7 +220,11 @@
     "INVENTORY_UNAVAILABLE": "対象のBOXまたは保証カードが既に別の開封会に割り当てられています",
     "LOGIN_THROTTLED": "ログインの失敗が続いたため、しばらくしてからお試しください",
     "MFA_LOCKED": "二段階認証の失敗が続いたため、15分間ロックされています",
-    "INVALID_SETTING": "選べない値です"
+    "INVALID_SETTING": "選べない値です",
+    "INVALID_DEVICE": "ステーションID（英大文字・数字・ハイフン）と名称を入力してください",
+    "INVALID_SEGMENT": "録画セグメントの形式が正しくありません",
+    "SEGMENT_CONFLICT": "同じ番号の録画セグメントが別の内容で登録済みです",
+    "UNAUTHORIZED": "認証に失敗しました"
   },
   "issues": {
     "SCHEMA": "入力が不足しているか、形式が正しくありません（{field}）",
@@ -1000,6 +1005,17 @@
         "label": "警告のみ（自動では中止しない）",
         "help": "2人確認を必ず守ります。確認されるまで開封会は開封中のままになり、返金も行われません。"
       }
-    }
+    },
+    "devicesTitle": "録画デバイス",
+    "devicesHelp": "開封ステーションのカメラが録画セグメント（チェックサムと保存先）を送るためのトークンです。トークンは発行時に一度だけ表示されます。",
+    "deviceStation": "ステーションID",
+    "deviceLabel": "名称",
+    "deviceRegister": "デバイスを登録",
+    "deviceTokenOnce": "このトークンは今回だけ表示されます。デバイスに設定してください。",
+    "deviceCreated": "登録日時",
+    "deviceLastSeen": "最終受信",
+    "deviceRevoke": "無効化",
+    "deviceRevoked": "無効",
+    "deviceRevokeConfirm": "このデバイスのトークンを無効にします。よろしいですか？"
   }
 }

@@ -135,7 +135,8 @@
     "openingStarted": "已开始开盒，正在录像",
     "markerAdded": "已记录标记",
     "aborted": "本场已中止，将全额退款",
-    "openingFinished": "开盒完成，已转入归属"
+    "openingFinished": "开盒完成，已转入归属",
+    "deviceRegistered": "设备已登记"
   },
   "errors": {
     "UNKNOWN": "发生错误（{code}）",
@@ -219,7 +220,11 @@
     "INVENTORY_UNAVAILABLE": "该盒或保底卡已被分配给其他场次",
     "LOGIN_THROTTLED": "登录失败次数过多，请稍后再试",
     "MFA_LOCKED": "二步验证失败次数过多，已锁定 15 分钟",
-    "INVALID_SETTING": "无效的设置值"
+    "INVALID_SETTING": "无效的设置值",
+    "INVALID_DEVICE": "请输入工位 ID（大写字母、数字、连字符）和名称",
+    "INVALID_SEGMENT": "录像片段格式不正确",
+    "SEGMENT_CONFLICT": "同一序号的录像片段已以不同内容登记",
+    "UNAUTHORIZED": "认证失败"
   },
   "issues": {
     "SCHEMA": "输入不完整或格式不正确（{field}）",
@@ -1000,6 +1005,17 @@
         "label": "仅告警（不自动中止）",
         "help": "严格保持双人确认；确认前场次一直处于开盒中，也不会退款。"
       }
-    }
+    },
+    "devicesTitle": "录像设备",
+    "devicesHelp": "开盒工位摄像机上报录像片段（校验和与存储位置）所用的令牌。令牌只在登记时显示一次。",
+    "deviceStation": "工位 ID",
+    "deviceLabel": "名称",
+    "deviceRegister": "登记设备",
+    "deviceTokenOnce": "此令牌只显示这一次，请配置到设备上。",
+    "deviceCreated": "登记时间",
+    "deviceLastSeen": "最近上报",
+    "deviceRevoke": "停用",
+    "deviceRevoked": "已停用",
+    "deviceRevokeConfirm": "确定停用此设备的令牌吗？"
   }
 }

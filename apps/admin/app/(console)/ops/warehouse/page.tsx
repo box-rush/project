@@ -168,8 +168,8 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
                       <td>{s.insured ? <span className="badge badge-gold">{t("insured")}</span> : <span className="badge">{t("standard")}</span>}</td>
                       <td>
                         <ActionForm action={shipAction.bind(null, s.id)} submitLabel={t("ship")} submitClass="btn btn-primary !min-h-7 text-xs" inline>
-                          <input name="trackingNumber" className="input mono !w-48 text-xs" placeholder={t("tracking")} required />
-                          <input name="carrier" className="input !w-36 text-xs" placeholder={t("carrier")} />
+                          <input name="trackingNumber" className="input mono !w-48 text-xs" aria-label={t("tracking")} placeholder={t("tracking")} required />
+                          <input name="carrier" className="input !w-36 text-xs" aria-label={t("carrier")} placeholder={t("carrier")} />
                         </ActionForm>
                       </td>
                     </tr>

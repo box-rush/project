@@ -30,7 +30,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
             </option>
           ))}
         </select>
-        <input name="entityId" defaultValue={sp.entityId ?? ""} className="input mono !w-80" placeholder={t("entityId")} />
+        <input name="entityId" defaultValue={sp.entityId ?? ""} className="input mono !w-80" aria-label={t("entityId")} placeholder={t("entityId")} />
         <button className="btn">{t("filter")}</button>
       </form>
       <div className="card overflow-x-auto p-0">

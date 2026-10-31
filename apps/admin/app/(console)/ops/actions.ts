@@ -1,5 +1,7 @@
 "use server";
 import {
+  registerDevice,
+  revokeDevice,
   advanceShipment,
   approveLottery,
   confirmAttribution,
@@ -307,4 +309,12 @@ export async function reconcileAction(_: Prev): Promise<ActionResult<unknown>> {
 // ───── O20 platform settings (ADMIN) ─────
 export async function recordingLossPolicyAction(_: Prev, fd: FormData) {
   return act((s) => setSetting(ctx(), s, "recordingLossUnconfirmed", str(fd, "value")), { revalidate: ["/ops/monitoring"], message: "saved" });
+}
+
+export async function registerDeviceAction(_: Prev, fd: FormData) {
+  return act((s) => registerDevice(ctx(), s, { stationId: str(fd, "stationId"), label: str(fd, "label") }), { revalidate: ["/ops/monitoring"], message: "deviceRegistered" });
+}
+
+export async function revokeDeviceAction(deviceId: string, _: Prev) {
+  return act((s) => revokeDevice(ctx(), s, deviceId), { revalidate: ["/ops/monitoring"], message: "saved" });
 }
