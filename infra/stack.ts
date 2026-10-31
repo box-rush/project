@@ -229,4 +229,5 @@ new sst.aws.Task("Migrate", {
 // T17: log metric filters, alarms and the SNS topic they notify
 const { alertTopic } = monitoring({ stage, isProd, db, web, admin, worker });
 
-export const outputs = { seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };
+// printed by `sst deploy`: the consumer site (and public verifier) and the back office
+export const outputs = { web: web.url, admin: admin.url, seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };
