@@ -2,7 +2,7 @@
 #   docker build -f infra/Dockerfile --target web    .
 #   docker build -f infra/Dockerfile --target admin  .
 #   docker build -f infra/Dockerfile --target worker .   (also runs migrations: `migrate` command)
-FROM node:22-slim AS base
+FROM node:25-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable
 WORKDIR /repo
@@ -27,7 +27,7 @@ ENV NEXT_PUBLIC_LOCALES=$NEXT_PUBLIC_LOCALES
 COPY . .
 RUN pnpm --filter @boxrush/web build && pnpm --filter @boxrush/admin build
 
-FROM node:22-slim AS next-runtime
+FROM node:25-slim AS next-runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0
 COPY --from=rds-ca /etc/ssl/rds-global-bundle.pem /etc/ssl/rds-global-bundle.pem
 WORKDIR /app
