@@ -30,6 +30,7 @@ export * from "./settings";
 export * from "./devices";
 export * from "./content";
 export * from "./documents";
+export * from "./health";
 export * from "./worker";
 export * from "./runtime";
 export * from "./adapters/payments";

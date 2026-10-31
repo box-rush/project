@@ -273,7 +273,11 @@
       "edit": "Edit",
       "view": "View",
       "rejected": "Rejected: {reason}",
-      "noDrawNotice": "Merchants cannot run the draw, upload recordings or edit after listing — the platform performs and records these."
+      "noDrawNotice": "Merchants cannot run the draw, upload recordings or edit after listing — the platform performs and records these.",
+      "pagination": "Pages",
+      "pageOf": "Page {page} of {pages} ({total})",
+      "prev": "Previous",
+      "next": "Next"
     }
   },
   "wizard": {
@@ -878,7 +882,9 @@
       "PAID": "Paid",
       "REJECTED": "Rejected"
     },
-    "incidentHelp": "Caps: standard ¥3,000, insured ¥30,000 (F9.5). How compensation reaches the customer is not decided yet (§10.14)."
+    "incidentHelp": "Caps: standard ¥3,000, insured ¥30,000 (F9.5). How compensation reaches the customer is not decided yet (§10.14).",
+    "searchCode": "Find parcel no.",
+    "search": "Search"
   },
   "tickets": {
     "title": "Tickets",
@@ -1094,5 +1100,14 @@
       "SHIPPING": "Storage & shipping",
       "ACCOUNT": "Account"
     }
+  },
+  "errorPage": {
+    "title": "This screen could not be shown",
+    "body": "Your last action may not have been saved. Check the state, then try again.",
+    "retry": "Reload",
+    "home": "Home",
+    "code": "Error id: {digest}",
+    "notFoundTitle": "Screen not found",
+    "notFoundBody": "Check the URL."
   }
 }

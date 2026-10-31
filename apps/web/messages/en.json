@@ -87,7 +87,10 @@
     "how3": "The box is opened at the set time, fully recorded",
     "how4": "Cards are kept in your Collection and shipped together",
     "noLotteries": "No rounds are on sale right now",
-    "recent": "Recent results"
+    "recent": "Recent results",
+    "pages": "Pages",
+    "prev": "Previous",
+    "more": "Show more"
   },
   "lottery": {
     "subject": "Box to be opened",
@@ -551,5 +554,14 @@
     "PHONE_TAKEN": "This phone number is used by another account",
     "AUTH_FAILED": "The email address or password is incorrect",
     "TOO_MANY_ATTEMPTS": "Too many attempts. Please wait a moment and try again"
+  },
+  "errorPage": {
+    "title": "This page could not be shown",
+    "body": "Please try again in a moment. Payments, draws and opening records are saved.",
+    "retry": "Reload",
+    "home": "Home",
+    "code": "Error id: {digest}",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "Please check the URL."
   }
 }

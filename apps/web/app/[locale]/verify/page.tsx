@@ -13,7 +13,7 @@ export default async function VerifyIndex({ params }: { params: Promise<{ locale
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("verify");
-  const list = await listLotteries(getCtx(), { statuses: ["READY", "OPENING", "ATTRIBUTING", "ATTRIBUTED", "FULFILLING", "COMPLETED"], sort: "opening", limit: 30 });
+  const list = await listLotteries(getCtx(), { statuses: ["READY", "OPENING", "ATTRIBUTING", "ATTRIBUTED", "FULFILLING", "COMPLETED"], sort: "recent", limit: 30 });
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <PageTitle>{t("publicTitle")}</PageTitle>

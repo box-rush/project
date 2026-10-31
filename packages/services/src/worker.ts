@@ -6,7 +6,7 @@ import { checkRefunded, closeSale, expireHold } from "./sales";
 import { runDraw } from "./draw";
 import { escalatePendingAborts, openingOverdue } from "./opening";
 import { executeRefund } from "./refunds";
-import { expireUnpaidShipment, forcedCharge, forcedShipmentSweep, storageReminder } from "./warehouse";
+import { expireUnpaidShipment, forcedCharge, forcedShipmentSweepAll, storageReminder } from "./warehouse";
 import { couponExpiryNotices } from "./coupons";
 import { dispatchNotifications } from "./notifications";
 
@@ -64,21 +64,32 @@ async function step(name: string, fn: () => Promise<unknown>) {
   }
 }
 
-export async function dailySweeps(ctx: Ctx) {
-  await forcedShipmentSweep(ctx);
+export async function dailySweeps(ctx: Ctx, shouldStop: () => boolean = () => false) {
+  // page through the X13 backlog; per-user failures are retried by the next day's sweep
+  const { failed } = await forcedShipmentSweepAll(ctx, shouldStop);
   await couponExpiryNotices(ctx);
   await storageReminder(ctx);
+  if (failed) console.warn(`[alert] forced-shipment sweep: ${failed} user(s) failed, retried tomorrow`);
 }
 
-/** One worker tick: due jobs, outbox, reconciliation. */
+const LANES = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 4));
+const PER_LANE = 25;
+
+/**
+ * One worker tick: due jobs in parallel lanes (each claims with SKIP LOCKED, in priority order), then the outbox.
+ * `busy` means there may be more due work right now, so the loop should not sleep.
+ */
 export async function tick(ctx: Ctx) {
-  const r = await runDueJobs(ctx, handlers, 50);
+  const lanes = await Promise.all(Array.from({ length: LANES }, () => runDueJobs(ctx, handlers, PER_LANE)));
+  const done = lanes.reduce((a, r) => a + r.done, 0);
+  const failed = lanes.reduce((a, r) => a + r.failed, 0);
   const sent = await dispatchNotifications(ctx);
-  return { ...r, sent };
+  return { done, failed, sent, busy: lanes.some((r) => r.done + r.failed >= PER_LANE) || sent >= 100 };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { createRuntime } = await import("./runtime");
+  const { createRuntime, closeRuntime } = await import("./runtime");
+  const { writeFileSync } = await import("node:fs");
   const ctx = createRuntime();
   let lastReconcile = 0;
   let lastDaily = "";
@@ -86,9 +97,31 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let dailyRetryAt = 0;
   const { LocalDirStore, S3ObjectLockStore, archiveAuditBatch } = await import("./archive");
   const store = process.env.AUDIT_ARCHIVE_BUCKET ? new S3ObjectLockStore(process.env.AUDIT_ARCHIVE_BUCKET) : new LocalDirStore(process.env.AUDIT_ARCHIVE_DIR ?? ".audit-archive");
-  console.log("box-rush worker started");
-  for (;;) {
+  // the container health check reads this file's age (infra/stack.ts): a wedged loop gets the task replaced
+  const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? "/tmp/boxrush-worker-heartbeat";
+  const heartbeat = () => {
     try {
+      writeFileSync(heartbeatFile, new Date().toISOString());
+    } catch {
+      /* not fatal */
+    }
+  };
+  // ECS sends SIGTERM on deploy / scale-in: finish the jobs in hand, then exit, so none is left RUNNING
+  let stopping = false;
+  for (const sig of ["SIGTERM", "SIGINT"] as const)
+    process.on(sig, () => {
+      if (!stopping) console.log(`[worker] ${sig}: finishing current work, then exiting`);
+      stopping = true;
+    });
+  const pause = async (ms: number) => {
+    for (let t = 0; t < ms && !stopping; t += 250) await new Promise((r) => setTimeout(r, 250));
+  };
+  console.log(`box-rush worker started (${LANES} job lanes + maintenance)`);
+
+  // Maintenance runs beside the job lanes, never in front of them: a long daily sweep or a slow archive upload must
+  // not delay a draw, a sale close or a hold expiry.
+  const maintenance = (async () => {
+    while (!stopping) {
       const now = Date.now();
       if (now - lastReconcile > 60_000) {
         lastReconcile = now;
@@ -100,7 +133,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const day = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
       if (day !== lastDaily && now >= dailyRetryAt && new Date(now + 9 * 3600_000).getUTCHours() >= 3) {
         // done for the day only on success; on failure retry in 10 minutes (sweeps are idempotent)
-        const ok = (await step("daily sweeps", () => dailySweeps(ctx).then(() => true))) === true;
+        const ok = (await step("daily sweeps", () => dailySweeps(ctx, () => stopping).then(() => true))) === true;
         if (ok) lastDaily = day;
         else dailyRetryAt = now + 10 * 60_000;
       }
@@ -108,10 +141,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         lastArchive = now;
         await step("audit archive", () => archiveAuditBatch(ctx, store)); // T7 hourly
       }
-      await tick(ctx);
+      await pause(5_000);
+    }
+  })();
+
+  while (!stopping) {
+    let busy = false;
+    try {
+      busy = (await tick(ctx)).busy;
     } catch (e) {
       console.error("[worker]", e);
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    heartbeat();
+    if (!busy) await pause(2000);
   }
+  await maintenance;
+  await closeRuntime();
+  console.log("[worker] stopped");
+  process.exit(0);
 }

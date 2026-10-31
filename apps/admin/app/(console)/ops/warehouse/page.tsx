@@ -10,12 +10,15 @@ import { PackStation } from "./PackStation";
 
 const TABS = ["in", "req", "pack", "out"] as const;
 
-export default async function Warehouse({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function Warehouse({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const staff = await requirePageRole("WAREHOUSE");
   const t = await getTranslations("warehouse");
   const sp = await searchParams;
   const tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as (typeof TABS)[number]) : "in";
-  const [o, picks, incidents] = await Promise.all([warehouseOverview(ctx(), staff), pickList(ctx()), listIncidents(ctx(), staff)]);
+  const q = (sp.q ?? "").replace(/^#/, "").trim();
+  const code = /^\d+$/.test(q) ? Number(q) : undefined;
+  const [o, pl, incidents] = await Promise.all([warehouseOverview(ctx(), staff, { code }), pickList(ctx(), { code }), listIncidents(ctx(), staff)]);
+  const picks = pl.parcels;
   const hasIncident = new Set(incidents.map((i) => i.incident.shipmentId));
   const requested = picks.filter((p) => p.shipment.status === "REQUESTED");
   const picking = picks.filter((p) => p.shipment.status === "PICKING");
@@ -32,9 +35,16 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
         {TABS.map((k) => (
           <Link key={k} href={`?tab=${k}`} className={`btn !min-h-8 text-xs ${tab === k ? "btn-primary" : ""}`}>
             {t(`tabs.${k}`)}
-            <span className="mono">{k === "in" ? o.toPutAway.length : k === "req" ? requested.length : k === "pack" ? picking.length + packed.length : o.shipped.length}</span>
+            <span className="mono">{k === "in" ? o.toPutAway.length : k === "req" ? pl.counts.REQUESTED : k === "pack" ? pl.counts.PICKING + pl.counts.PACKED : o.shipped.length}</span>
           </Link>
         ))}
+              <form className="ml-auto flex items-center gap-1" role="search">
+          <input type="hidden" name="tab" value={tab} />
+          <input name="q" defaultValue={q} className="input mono !min-h-8 !w-36 text-xs" inputMode="numeric" aria-label={t("searchCode")} placeholder={t("searchCode")} />
+          <button type="submit" className="btn !min-h-8 text-xs">
+            {t("search")}
+          </button>
+        </form>
       </nav>
 
       {tab === "in" && (

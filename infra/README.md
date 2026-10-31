@@ -42,6 +42,14 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 9. Smoke: `E2E_BASE_URL=https://<domain> npx playwright test tests/e2e/consumer.spec.ts -g verification`.
 
 Every later deploy: `npx sst deploy --stage <stage>`, then step 4 if `packages/db/migrations` changed.
+Index migrations run inside a transaction and briefly block writes to the table; on the ~1M-row test dataset 0011
+took 4 s in total. Once tables are large in production, add indexes with `CREATE INDEX CONCURRENTLY` in a
+migration of their own (outside a transaction) instead.
+
+**Monitoring hooks (T17).** Point an external check at `https://<admin domain>/api/health?deep=1` (from the allowlisted
+network): it returns 503 when the database round trip fails or the oldest due job is more than 5 minutes late. The
+worker logs `[alert]` lines (failing jobs, unconfirmed X7 reports, notification send failures, sweep failures) — the
+CloudWatch metric filters / alarms on them are still to be created (see Known gaps).
 Migrations must stay backward compatible (§10.12); no deploys from 2 h before an opening until attribution is done.
 
 ## Known gaps (not yet in this stack)

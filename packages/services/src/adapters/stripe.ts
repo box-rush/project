@@ -13,7 +13,8 @@ export class StripePaymentProvider implements PaymentProvider {
     secretKey: string,
     private readonly webhookSecret: string,
   ) {
-    this.stripe = new Stripe(secretKey);
+    // bounded calls; the SDK retries network errors with the same idempotency key, so a retry never double-charges
+    this.stripe = new Stripe(secretKey, { timeout: 20_000, maxNetworkRetries: 2 });
   }
 
   async createPayment(input: CreatePaymentInput) {

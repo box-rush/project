@@ -87,7 +87,10 @@
     "how3": "在约定时刻全程录像开盒",
     "how4": "卡片保管在仓库中，集中发货",
     "noLotteries": "目前没有销售中的场次",
-    "recent": "最近的结果"
+    "recent": "最近的结果",
+    "pages": "分页",
+    "prev": "上一页",
+    "more": "查看更多"
   },
   "lottery": {
     "subject": "待开盒的盒子",
@@ -551,5 +554,14 @@
     "PHONE_TAKEN": "该手机号码已被其他账号使用",
     "AUTH_FAILED": "邮箱地址或密码不正确",
     "TOO_MANY_ATTEMPTS": "尝试次数过多，请稍后再试"
+  },
+  "errorPage": {
+    "title": "无法显示页面",
+    "body": "请稍后再试。支付、抽选与开盒记录均已保存。",
+    "retry": "重新加载",
+    "home": "返回首页",
+    "code": "错误编号：{digest}",
+    "notFoundTitle": "找不到页面",
+    "notFoundBody": "请确认网址是否正确。"
   }
 }

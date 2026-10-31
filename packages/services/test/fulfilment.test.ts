@@ -5,7 +5,7 @@ import {
   createVoucherCode,
   deleteAccount,
   forcedCharge,
-  forcedShipmentSweep,
+  forcedShipmentSweepAll,
   redeemCode,
   requestShipment,
   upsertAddress,
@@ -61,7 +61,7 @@ describe("X13 forced shipment after free storage", () => {
     await upsertAddress(ctx, withAddr, { name: "テスト", postalCode: "1000001", prefecture: "東京都", city: "千代田区", line1: "1-1", phone: "0300000000" });
     await addPaymentMethod(ctx, withAddr, { providerRef: "pm_x", brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 });
     payments.declineSaved = true;
-    await forcedShipmentSweep(ctx);
+    await forcedShipmentSweepAll(ctx);
     expect((await ctx.db.select().from(users).where(eq(users.id, noAddr)))[0]!.purchaseSuspendedReason).toBe("ADDRESS_REQUIRED");
     const [s] = await ctx.db.select().from(shipments).where(eq(shipments.userId, withAddr));
     expect(s).toMatchObject({ forced: true, status: "AWAITING_PAYMENT", payable: 390 });

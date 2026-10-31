@@ -273,7 +273,11 @@
       "edit": "编辑",
       "view": "查看",
       "rejected": "驳回原因：{reason}",
-      "noDrawNotice": "商家端不能触发抽选、上传录像或在上架后修改（由平台执行并记录）。"
+      "noDrawNotice": "商家端不能触发抽选、上传录像或在上架后修改（由平台执行并记录）。",
+      "pagination": "分页",
+      "pageOf": "第 {page} / {pages} 页（共 {total} 条）",
+      "prev": "上一页",
+      "next": "下一页"
     }
   },
   "wizard": {
@@ -878,7 +882,9 @@
       "PAID": "赔偿确定",
       "REJECTED": "不予赔偿"
     },
-    "incidentHelp": "赔偿上限：通常发货 ¥3,000，补偿付き ¥30,000（F9.5）。赔偿如何交付给用户尚未决定（§10.14）。"
+    "incidentHelp": "赔偿上限：通常发货 ¥3,000，补偿付き ¥30,000（F9.5）。赔偿如何交付给用户尚未决定（§10.14）。",
+    "searchCode": "按发货编号搜索",
+    "search": "搜索"
   },
   "tickets": {
     "title": "工单",
@@ -1094,5 +1100,14 @@
       "SHIPPING": "保管与发货",
       "ACCOUNT": "账号"
     }
+  },
+  "errorPage": {
+    "title": "无法显示画面",
+    "body": "操作可能未保存，请确认状态后重试。",
+    "retry": "重新加载",
+    "home": "返回首页",
+    "code": "错误编号：{digest}",
+    "notFoundTitle": "找不到画面",
+    "notFoundBody": "请确认网址。"
   }
 }

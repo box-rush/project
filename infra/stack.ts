@@ -154,7 +154,7 @@ new sst.aws.Service("Web", {
           { listen: "443/https", forward: "3000/http" },
         ]
       : [{ listen: "80/http", forward: "3000/http" }],
-    health: { "3000/http": { path: "/verify/algorithm", interval: "15 seconds" } },
+    health: { "3000/http": { path: "/api/health", interval: "15 seconds" } },
   },
 });
 
@@ -174,7 +174,7 @@ new sst.aws.Service("Admin", {
           { listen: "443/https", forward: "3001/http" },
         ]
       : [{ listen: "80/http", forward: "3001/http" }],
-    health: { "3001/http": { path: "/login" } },
+    health: { "3001/http": { path: "/api/health" } },
   },
   transform: {
     // Staff access only from the office / VPN (T18). Comma separated CIDRs; empty = open (dev only).
@@ -194,7 +194,14 @@ new sst.aws.Service("Worker", {
   // the reconcile loop and archive assume a single worker
   scaling: { min: 1, max: 1 },
   permissions: permissions.worker,
-  environment: { ...common, ...rngForWorker },
+  environment: { ...common, ...rngForWorker, WORKER_HEARTBEAT_FILE: "/tmp/boxrush-worker-heartbeat" },
+  // the loop touches the heartbeat file every few seconds; a wedged worker is replaced (SIGTERM lets it finish jobs in hand)
+  health: {
+    command: ["CMD-SHELL", "node -e \"process.exit(Date.now() - require('fs').statSync('/tmp/boxrush-worker-heartbeat').mtimeMs < 120000 ? 0 : 1)\""],
+    startPeriod: "60 seconds",
+    interval: "30 seconds",
+    retries: 3,
+  },
 });
 
 // One-off: `npx sst shell --stage <stage> -- node infra/run-migrate.mjs` (see infra/README.md)

@@ -1,4 +1,4 @@
-import { consolidationK, premiumM } from "@boxrush/core";
+import { consolidationK, jstMonthRange, premiumM } from "@boxrush/core";
 import { sql } from "@boxrush/db";
 import type { Ctx } from "./context";
 import { requireRole, type StaffPrincipal } from "./principals";
@@ -64,16 +64,17 @@ export async function dashboard(ctx: Ctx, p: StaffPrincipal, range: { from: Date
 /** F26.7: channel funnel by first-touch source (visit → signup → SMS → first purchase → repeat). */
 export async function channelFunnel(ctx: Ctx, p: StaffPrincipal, month: string) {
   requireRole(p, "ANALYST", "FINANCE");
+  const range = jstMonthRange(month);
   const rows = await ctx.db.execute<{ source: string; signups: string; verified: string; buyers: string; repeaters: string; revenue: string }>(sql`
     WITH u AS (SELECT id, coalesce(first_touch->>'utm_source', first_touch->>'ref', 'direct') AS source, phone_number_verified FROM users
-               WHERE to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') = ${month}),
+               WHERE created_at >= ${range.from} AND created_at < ${range.to}),
          o AS (SELECT user_id, count(*) AS n, sum(amount) AS amt FROM orders WHERE status = 'PAID' GROUP BY user_id)
     SELECT u.source, count(*)::text AS signups, count(*) FILTER (WHERE u.phone_number_verified)::text AS verified,
            count(o.user_id)::text AS buyers, count(*) FILTER (WHERE o.n >= 2)::text AS repeaters, coalesce(sum(o.amt),0)::text AS revenue
     FROM u LEFT JOIN o ON o.user_id = u.id GROUP BY u.source ORDER BY count(*) DESC`);
   const visits = await ctx.db.execute<{ source: string; v: string }>(sql`
     SELECT coalesce(props->>'utm_source', props->>'ref', 'direct') AS source, count(DISTINCT anon_id)::text AS v FROM events
-    WHERE name = 'landing' AND to_char(at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') = ${month} GROUP BY 1`);
+    WHERE name = 'landing' AND at >= ${range.from} AND at < ${range.to} GROUP BY 1`);
   const spend = await ctx.db.execute<{ source: string; amount: number }>(sql`SELECT source, amount FROM channel_spend WHERE month = ${month}`);
   const v = new Map(visits.rows.map((r) => [r.source, Number(r.v)]));
   const s = new Map(spend.rows.map((r) => [r.source, r.amount]));

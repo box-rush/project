@@ -4,7 +4,7 @@ import { eq, jobs, lotteries, orders, refunds, shipments, slots, sql, staffSessi
 import {
   approveLottery, confirmAttribution, correctOrAddCard, createStaff, enterCard, expireUnpaidShipment, finalizeAttribution, finishOpening, frozenRecordText,
   getLottery, handlePaymentEvent, holdSlots, paymentForOrder, proposeAttribution, reclaimStaleJobs, requestShipment, runDueJobs, saveDraft, staffLogin,
-  staffVerifyMfa, startOpening, submitForReview, upsertAddress, totp, addPaymentMethod, forcedShipmentSweep, forcedCharge, escalatePendingAborts,
+  staffVerifyMfa, startOpening, submitForReview, upsertAddress, totp, addPaymentMethod, forcedShipmentSweepAll, forcedCharge, escalatePendingAborts,
   reportRecordingState, confirmRecordingAbort, reconcile, setSetting, type JobHandler,
 } from "../src";
 import { Clock, JST, buy, configFor, drain, listedLottery, makeCtx, makeUser, makeWorld, pgRejects } from "./helpers";
@@ -153,7 +153,7 @@ describe("review fixes", () => {
     await ctx.db.insert(collectionItems).values({ userId: u, lotteryId: id, slotNumber: 1, name: "c", rarity: "C", storedSince: clock.now(), freeStorageUntil: JST(2026, 12, 6, 0) });
     await upsertAddress(ctx, u, { name: "テスト", postalCode: "1000001", prefecture: "東京都", city: "千代田区", line1: "1-1", phone: "0300000000" });
     await addPaymentMethod(ctx, u, { providerRef: "pm_x", brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 });
-    await forcedShipmentSweep(ctx);
+    await forcedShipmentSweepAll(ctx);
     const [s] = await ctx.db.select().from(shipments).where(eq(shipments.userId, u));
     await forcedCharge(ctx, s!.id);
     const [charged] = await ctx.db.select().from(shipments).where(eq(shipments.id, s!.id));

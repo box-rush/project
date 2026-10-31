@@ -8,10 +8,11 @@ import { LotteryCard } from "@/components/LotteryCard";
 
 export const dynamic = "force-dynamic";
 const CATS = ["ALL", "POKEMON", "ONEPIECE", "YUGIOH"] as const;
+const PAGE = 24;
 const SORTS = ["recommended", "opening", "remaining", "price"] as const;
 
 /** U04 home (F3.1 tabs, F3.2 sort, F3.3 cards, F3.5 entry zone, F3.9 banners). */
-export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ c?: string; sort?: string }> }) {
+export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ c?: string; sort?: string; page?: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const sp = await searchParams;
@@ -19,15 +20,20 @@ export default async function Home({ params, searchParams }: { params: Promise<{
   const ctx = getCtx();
   const cat = CATS.includes(sp.c as never) ? sp.c! : "ALL";
   const sort = SORTS.includes(sp.sort as never) ? (sp.sort as (typeof SORTS)[number]) : "recommended";
-  const [list, banners, recent, user] = await Promise.all([
-    listLotteries(ctx, { category: cat === "ALL" ? undefined : cat, sort }),
+  const page = Math.max(0, Math.floor(Number(sp.page ?? 0)) || 0);
+  const category = cat === "ALL" ? undefined : cat;
+  const [list, entry, banners, recent, user] = await Promise.all([
+    // one more than a page tells us whether there is a next page
+    listLotteries(ctx, { category, sort, limit: PAGE + 1, offset: page * PAGE }),
+    listLotteries(ctx, { category, statuses: ["ON_SALE"], maxPrice: 500, sort: "recommended", limit: 4 }),
     activeBanners(ctx),
-    listLotteries(ctx, { statuses: ["ATTRIBUTED", "FULFILLING", "COMPLETED"], limit: 4, sort: "opening" }),
+    listLotteries(ctx, { statuses: ["ATTRIBUTED", "FULFILLING", "COMPLETED"], limit: 4, sort: "recent" }),
     getSessionUser(),
   ]);
+  const hasNext = list.length > PAGE;
+  const shown = list.slice(0, PAGE);
   const anon = (await cookies()).get("br_anon")?.value ?? null;
   await recordEvent(ctx.db, "view_home", { userId: user?.id ?? null, anonId: anon });
-  const entry = list.filter((l) => l.status === "ON_SALE" && l.slotPrice <= 500);
   const qs = (o: Record<string, string>) => `/?${new URLSearchParams({ c: cat, sort, ...o }).toString()}`;
 
   return (
@@ -74,15 +80,29 @@ export default async function Home({ params, searchParams }: { params: Promise<{
             ))}
           </div>
         </div>
-        {list.length === 0 ? (
+        {shown.length === 0 ? (
           <p className="text-ink-2">{t("home.noLotteries")}</p>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-            {list.map((l) => (
+            {shown.map((l) => (
               <LotteryCard key={l.id} l={l} />
             ))}
           </div>
         )}
+        {page > 0 || hasNext ? (
+          <nav className="mt-4 flex justify-center gap-2" aria-label={t("home.pages")}>
+            {page > 0 ? (
+              <Link href={qs({ page: String(page - 1) })} className="btn btn-ghost">
+                {t("home.prev")}
+              </Link>
+            ) : null}
+            {hasNext ? (
+              <Link href={qs({ page: String(page + 1) })} className="btn btn-ghost">
+                {t("home.more")}
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </section>
 
       {recent.length > 0 && (

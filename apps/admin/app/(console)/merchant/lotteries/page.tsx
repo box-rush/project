@@ -4,10 +4,12 @@ import { merchantLotteries } from "@boxrush/services";
 import { Empty, Jst, LotCode, PageHeader, StatusBadge, Yen } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
 
-export default async function MerchantLotteries() {
+export default async function MerchantLotteries({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const staff = await requirePageRole("MERCHANT");
   const t = await getTranslations("merchant.list");
-  const rows = await merchantLotteries(ctx(), staff);
+  const page = Math.max(0, Number((await searchParams).page ?? 0) || 0);
+  const { rows, total, pageSize } = await merchantLotteries(ctx(), staff, { page });
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <>
       <PageHeader title={t("title")} code="B03">
@@ -68,6 +70,21 @@ export default async function MerchantLotteries() {
           </table>
         )}
       </div>
+      {pages > 1 ? (
+        <nav className="mt-3 flex items-center justify-end gap-2 text-sm" aria-label={t("pagination")}>
+          <span className="text-ink2">{t("pageOf", { page: page + 1, pages, total })}</span>
+          {page > 0 ? (
+            <Link href={`?page=${page - 1}`} className="btn !min-h-8 text-xs">
+              {t("prev")}
+            </Link>
+          ) : null}
+          {page + 1 < pages ? (
+            <Link href={`?page=${page + 1}`} className="btn !min-h-8 text-xs">
+              {t("next")}
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
       <p className="mt-3 text-xs text-ink2">{t("noDrawNotice")}</p>
     </>
   );

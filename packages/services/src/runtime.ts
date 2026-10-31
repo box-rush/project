@@ -1,4 +1,5 @@
 import { createDb } from "@boxrush/db";
+import { awsClientConfig } from "./adapters/aws";
 import { KMSClient } from "@aws-sdk/client-kms";
 import { KmsKeyProvider, LocalAesKeyProvider, type SeedKeyProvider } from "./adapters/keys";
 import { ConsoleMessaging } from "./adapters/messaging";
@@ -15,7 +16,7 @@ function required(name: string): string {
   return v;
 }
 
-const g = globalThis as unknown as { __boxrushCtx?: Ctx; __boxrushMock?: MockPaymentProvider };
+const g = globalThis as unknown as { __boxrushCtx?: Ctx; __boxrushMock?: MockPaymentProvider; __boxrushPools?: { end(): Promise<void> }[] };
 
 /** Shared mock provider so the dev checkout and the webhook simulator see the same payments. */
 export function mockPayments(): MockPaymentProvider {
@@ -25,7 +26,7 @@ export function mockPayments(): MockPaymentProvider {
 /** T11: KMS in deployed environments; the local AES key only when no KMS key is configured. */
 function seedKeys(): SeedKeyProvider {
   if (process.env.RNG_KMS_KEY_ID) {
-    return new KmsKeyProvider(process.env.RNG_KMS_KEY_ID, new KMSClient({ region: process.env.AWS_REGION ?? "ap-northeast-1" }));
+    return new KmsKeyProvider(process.env.RNG_KMS_KEY_ID, new KMSClient(awsClientConfig()));
   }
   if (process.env.NODE_ENV === "production" && !process.env.RNG_SEED_KEY) throw new Error("RNG_KMS_KEY_ID (or RNG_SEED_KEY outside AWS) is required");
   return new LocalAesKeyProvider(process.env.RNG_SEED_KEY ?? "00".repeat(32));
@@ -46,7 +47,8 @@ function smsSender(console_: SmsSender): SmsSender {
 /** Process-wide context built from env (see .env.example). */
 export function createRuntime(): Ctx {
   if (g.__boxrushCtx) return g.__boxrushCtx;
-  const { db } = createDb(process.env.DATABASE_URL);
+  const { db, pool } = createDb(process.env.DATABASE_URL);
+  const pools: { end(): Promise<void> }[] = (g.__boxrushPools = [pool]);
   const messaging = new ConsoleMessaging();
   let paymentsProvider: PaymentProvider | undefined;
   let rngService: RandomnessService | undefined;
@@ -71,7 +73,9 @@ export function createRuntime(): Ctx {
         // Outside production the vault shares the dev database (same default as createDb).
         const url = process.env.RNG_DATABASE_URL ?? (process.env.NODE_ENV === "production" ? undefined : process.env.DATABASE_URL ?? null);
         if (url === undefined) throw new Error("RNG_DATABASE_URL is not configured for this service");
-        rngService = new RandomnessService(createDb(url ?? undefined, { max: 2 }).db, seedKeys());
+        const rng = createDb(url ?? undefined, { max: 2, applicationName: "boxrush-rng" });
+        pools.push(rng.pool);
+        rngService = new RandomnessService(rng.db, seedKeys());
       }
       return rngService;
     },
@@ -83,4 +87,11 @@ export function createRuntime(): Ctx {
   };
   g.__boxrushCtx = ctx;
   return ctx;
+}
+
+/** Graceful shutdown: close every pool the runtime opened (the worker calls this on SIGTERM). */
+export async function closeRuntime() {
+  await Promise.allSettled((g.__boxrushPools ?? []).map((p) => p.end()));
+  g.__boxrushPools = [];
+  g.__boxrushCtx = undefined;
 }

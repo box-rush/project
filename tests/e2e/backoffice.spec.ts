@@ -238,22 +238,22 @@ test("X9: attribution records a maker defect; the owner sees it on the card; X12
   const status = async () => (await q<{ s: string }>("SELECT status AS s FROM shipments WHERE id = $1", [shipment.id]))[0]!.s;
   await expect.poll(status).toBe("REQUESTED");
   const rowOf = (p: Page) => p.getByRole("row", { name: new RegExp(`#${shipment.code}(?!\\d)`) });
-  await wh.goto("/ops/warehouse?tab=req");
+  await wh.goto(`/ops/warehouse?tab=req&q=${shipment.code}`);
   await rowOf(wh).getByRole("button", { name: "ピッキング開始" }).click();
   await expect.poll(status).toBe("PICKING");
-  await wh.goto("/ops/warehouse?tab=pack");
+  await wh.goto(`/ops/warehouse?tab=pack&q=${shipment.code}`);
   for (const c of await q<{ id: string }>("SELECT id FROM collection_items WHERE shipment_id = $1", [shipment.id])) {
     await wh.getByLabel("スキャン（Enterで1件）").fill(c.id);
     await wh.getByLabel("スキャン（Enterで1件）").press("Enter");
   }
   await wh.getByRole("button", { name: "梱包完了" }).click();
   await expect.poll(status).toBe("PACKED");
-  await wh.goto("/ops/warehouse?tab=pack");
+  await wh.goto(`/ops/warehouse?tab=pack&q=${shipment.code}`);
   await rowOf(wh).getByLabel("追跡番号").fill(`X12-${RUN}`);
   await rowOf(wh).getByRole("button", { name: "出荷する" }).click();
   await expect.poll(status).toBe("SHIPPED");
 
-  await wh.goto("/ops/warehouse?tab=out");
+  await wh.goto(`/ops/warehouse?tab=out&q=${shipment.code}`);
   await rowOf(wh).getByText("配送事故を記録").click();
   await rowOf(wh).getByLabel("状況（運送会社の連絡内容など）").fill("ヤマトから紛失の連絡");
   await rowOf(wh).getByRole("button", { name: "記録する" }).click();
