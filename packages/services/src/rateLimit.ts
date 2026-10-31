@@ -34,4 +34,6 @@ export async function enforceHoldRateLimit(ctx: Ctx, userId: string, ip: string 
 /** Old windows are useless after a day; the worker's daily sweep clears them. */
 export async function pruneRateLimits(db: DbOrTx, now: Date) {
   await db.execute(sql`DELETE FROM ${rateLimits} WHERE window_start < ${new Date(now.getTime() - 86_400_000)}`);
+  // Better Auth's counters (last_request in epoch ms); its longest window is 10 minutes
+  await db.execute(sql`DELETE FROM auth_rate_limits WHERE last_request < ${now.getTime() - 86_400_000}`);
 }

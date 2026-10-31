@@ -22,6 +22,9 @@ export function assertTestModeAllowed() {
  */
 export async function testModeLatestOtp(ctx: Ctx, phoneE164: string): Promise<string | null> {
   if (!isTestMode()) fail("FORBIDDEN");
+  // exactly a phone number: Better Auth keeps other codes under derived identifiers (e.g. `<phone>-request-password-reset`),
+  // which must never be shown — that would let anyone reset another account's password
+  if (!/^\+81[789]0\d{8}$/.test(phoneE164)) fail("VALIDATION");
   const [row] = await ctx.db
     .select({ value: authVerifications.value })
     .from(authVerifications)

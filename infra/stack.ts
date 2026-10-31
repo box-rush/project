@@ -135,6 +135,9 @@ const { router: adminCdn } = protectedSite("Admin", {
 });
 const webBaseUrl = webCdn.url;
 
+// T18: load balancer rule condition — the header our CloudFront viewer function adds (infra/security.ts)
+const fromOurCdn = { header: { name: "x-origin-verify", values: [secret.OriginVerifySecret.value] } };
+
 // ── runtime environment ─────────────────────────────────────────────────────────────────────────
 const common = {
   NODE_ENV: "production",
@@ -216,12 +219,14 @@ const web = new sst.aws.Service("Web", {
   },
   loadBalancer: {
     domain: webOriginHost,
+    // only requests carrying the CloudFront origin secret are forwarded; everything else gets the listener's
+    // default 403 (another CloudFront distribution pointed at this load balancer is NOT ours: it would skip the WAF)
     rules: webOriginHost
       ? [
           { listen: "80/http", redirect: "443/https" },
-          { listen: "443/https", forward: "3000/http" },
+          { listen: "443/https", forward: "3000/http", conditions: fromOurCdn },
         ]
-      : [{ listen: "80/http", forward: "3000/http" }],
+      : [{ listen: "80/http", forward: "3000/http", conditions: fromOurCdn }],
     health: { "3000/http": { path: "/api/health", interval: "15 seconds" } },
   },
   // T18: only CloudFront may reach the web load balancer (no bypassing the WAF); the app additionally checks the
@@ -242,12 +247,14 @@ const admin = new sst.aws.Service("Admin", {
   ssm: { ...commonSecrets, ...rngSecrets, ORIGIN_VERIFY_SECRET: sm("ORIGIN_VERIFY_SECRET", secret.OriginVerifySecret.value) },
   loadBalancer: {
     domain: adminOriginHost,
+    // only requests carrying the CloudFront origin secret are forwarded; everything else gets the listener's
+    // default 403 (another CloudFront distribution pointed at this load balancer is NOT ours: it would skip the WAF)
     rules: adminOriginHost
       ? [
           { listen: "80/http", redirect: "443/https" },
-          { listen: "443/https", forward: "3001/http" },
+          { listen: "443/https", forward: "3001/http", conditions: fromOurCdn },
         ]
-      : [{ listen: "80/http", forward: "3001/http" }],
+      : [{ listen: "80/http", forward: "3001/http", conditions: fromOurCdn }],
     health: { "3001/http": { path: "/api/health" } },
   },
   // reachable only through its CloudFront (whose WAF holds the IP allowlist)

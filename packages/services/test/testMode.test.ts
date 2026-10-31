@@ -39,6 +39,9 @@ describe("test mode", () => {
     process.env.BOXRUSH_TEST_MODE = "1";
     expect(await testModeLatestOtp(ctx, phone)).toBe("333333");
     expect(await testModeLatestOtp(ctx, "+819000000000")).toBeNull();
+    // derived identifiers (password reset codes) are never shown
+    await ctx.db.insert(authVerifications).values({ id: crypto.randomUUID(), identifier: `${phone}-request-password-reset`, value: "444444:0", expiresAt: at(5), createdAt: at(0) });
+    await expect(testModeLatestOtp(ctx, `${phone}-request-password-reset`)).rejects.toThrow(/VALIDATION/);
   });
 
   it("the seed refuses a deployed environment unless it is in test mode", () => {

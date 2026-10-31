@@ -58,26 +58,31 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: aws sts get-caller-identity --query Account --output text
 
-      # Random secrets, generated once per stage. A marker records that they exist, so a later run never replaces them
-      # (PseudonymKey must never change: every public pseudonym would change with it).
+      # Random secrets, generated once per stage and never replaced (PseudonymKey must never change: every public
+      # pseudonym would change with it). Each secret is checked on its own, so a stage first set up by hand
+      # (infra/DEPLOY.zh-CN.md §6) keeps its values; the SSM marker only skips the check on later runs.
       - name: one-time secrets
         if: inputs.action == 'deploy'
         run: |
           set -euo pipefail
           marker="/boxrush/$STAGE/secrets-initialized"
           if out=$(aws ssm get-parameter --name "$marker" 2>&1); then
-            echo "secrets already initialised"
-          elif grep -q ParameterNotFound <<<"$out"; then
-            for s in BetterAuthSecret PseudonymKey DbAppPassword DbRngPassword OriginVerifySecret; do
-              v=$(openssl rand -hex 32); echo "::add-mask::$v"
-              pnpm exec sst secret set "$s" "$v" --stage "$STAGE" >/dev/null
-              echo "generated $s"
-            done
-            aws ssm put-parameter --name "$marker" --type String --value "$(date -u +%FT%TZ)" >/dev/null
-          else
+            echo "secrets already initialised"; exit 0
+          elif ! grep -q ParameterNotFound <<<"$out"; then
             echo "$out"; exit 1
           fi
+          # names only (values are never printed); a failing list stops the run rather than overwrite anything
+          names=$(pnpm exec sst secret list --stage "$STAGE" | { grep -oE '[A-Za-z][A-Za-z0-9]*' || true; } | sort -u)
+          for s in BetterAuthSecret PseudonymKey DbAppPassword DbRngPassword OriginVerifySecret; do
+            if grep -qx "$s" <<<"$names"; then echo "$s exists, kept"; continue; fi
+            v=$(openssl rand -hex 32); echo "::add-mask::$v"
+            pnpm exec sst secret set "$s" "$v" --stage "$STAGE" >/dev/null
+            echo "generated $s"
+          done
+          aws ssm put-parameter --name "$marker" --type String --value "$(date -u +%FT%TZ)" >/dev/null
 
+      # ⚠️ the services roll out before Migrate runs: new code meets the old schema for a few minutes when a deploy adds
+      # migrations (they only add tables / columns). Acceptable for staging; see infra/README.md Known gaps.
       - name: sst deploy
         if: inputs.action == 'deploy'
         run: pnpm exec sst deploy --stage "$STAGE"

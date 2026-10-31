@@ -55,6 +55,10 @@ describe("T18 human check (Turnstile)", () => {
   it("is skipped when not configured; otherwise requires a valid token for the hold action, failing closed", async () => {
     delete process.env.TURNSTILE_SECRET_KEY;
     expect(await verifyTurnstile(null, null)).toBe(true);
+    // …except on production, where a missing key refuses holds
+    process.env.BOXRUSH_STAGE = "production";
+    expect(await verifyTurnstile(null, null)).toBe(false);
+    delete process.env.BOXRUSH_STAGE;
     process.env.TURNSTILE_SECRET_KEY = "sk";
     expect(await verifyTurnstile(null, "1.2.3.4", fake({ success: true }))).toBe(false);
     expect(await verifyTurnstile("tok", "1.2.3.4", fake({ success: true, action: "hold" }))).toBe(true);

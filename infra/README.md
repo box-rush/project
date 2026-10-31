@@ -96,6 +96,10 @@ the database fails or the oldest due job is more than 5 minutes late).
 
 
 ## Known gaps (not yet in this stack)
+- **Migrations run after the rollout**: `sst deploy` replaces the services, then the workflow runs `Migrate`. When a
+  deploy adds migrations, new code meets the old schema for a few minutes (they only add tables / columns, so old
+  code on the new schema is fine). Before production: build and run `Migrate` first (e.g. `sst deploy --target Migrate`,
+  then the task, then the full deploy) or migrate from a pre-deploy step.
 - **Separate randomness account (T11, §10.7.3)**: the seed key and randomness service live in the main account here,
   isolated by DB role and KMS key. Moving them to an AWS Organizations member account with an SCP-locked key policy is still to do,
   and so is placing the audit archive bucket in that account.

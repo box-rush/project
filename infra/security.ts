@@ -101,10 +101,15 @@ event.request.headers["x-origin-verify"] = { value: "${p.originVerify}" };`,
   return { router, acl };
 }
 
-/** The load balancer behind a protected site accepts only CloudFront's origin-facing addresses. */
+/**
+ * The load balancer behind a protected site accepts only CloudFront's origin-facing addresses. ONE rule: each
+ * reference to this prefix list counts as ~55 rules against the 60-rules-per-group quota. Any CloudFront distribution
+ * (also someone else's) can still reach it, so the listener additionally forwards only requests carrying our origin
+ * secret (infra/stack.ts `fromOurCdn`).
+ */
 export function cloudfrontOnlyIngress(args: aws.ec2.SecurityGroupArgs): undefined {
   const cf = aws.ec2.getManagedPrefixListOutput({ name: "com.amazonaws.global.cloudfront.origin-facing" });
-  args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, prefixListIds: [cf.id] }));
+  args.ingress = [{ protocol: "tcp", fromPort: 80, toPort: 443, prefixListIds: [cf.id] }];
   return undefined;
 }
 
