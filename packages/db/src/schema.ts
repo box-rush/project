@@ -44,7 +44,7 @@ export const lotteryStatus = pgEnum("lottery_status", [
 ]);
 export const slotState = pgEnum("slot_state", ["AVAILABLE", "HELD", "SOLD"]);
 export const orderStatus = pgEnum("order_status", ["PENDING", "PAID", "EXPIRED", "REFUND_PENDING", "REFUNDED", "LATE_PAYMENT_REFUNDED"]);
-export const collectionState = pgEnum("collection_state", ["STORED", "SHIPPING", "RECEIVED"]);
+export const collectionState = pgEnum("collection_state", ["STORED", "SHIPPING", "RECEIVED", "LOST"]);
 export const attributionMethod = pgEnum("attribution_method", ["AUTO", "MANUAL", "FALLBACK"]);
 export const staffRole = pgEnum("staff_role", ["ADMIN", "MERCHANT", "REVIEWER", "STATION", "ATTRIBUTION", "WAREHOUSE", "CS", "FINANCE", "ANALYST"]);
 export const shipmentStatus = pgEnum("shipment_status", [
@@ -56,6 +56,7 @@ export const shipmentStatus = pgEnum("shipment_status", [
   "DELIVERED",
   "RETURNED",
   "CANCELLED",
+  "LOST", // X12: carrier lost the parcel
 ]);
 export const inventoryKind = pgEnum("inventory_kind", ["SEALED", "GUARANTEE_CARD"]);
 export const inventoryStatus = pgEnum("inventory_status", ["RECEIVED", "IN_STOCK", "REJECTED", "ALLOCATED", "OPENED", "AWARDED", "RETURNED"]);
@@ -568,6 +569,8 @@ export const openedCards = pgTable(
     proposedBy: text("proposed_by"),
     confirmedBy: text("confirmed_by"),
     note: text("note"),
+    /** X9 / PD6: manufacturer defect seen on the recording; the card is attributed as-is, the note is shown to the owner */
+    defectNote: text("defect_note"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("opened_cards_seq_uq").on(t.lotteryId, t.seq)],
@@ -746,6 +749,8 @@ export const faqs = pgTable("faqs", {
   question: text("question").notNull(),
   answer: text("answer").notNull(),
   sort: integer("sort").notNull().default(0),
+  published: boolean("published").notNull().default(true),
+  updatedBy: text("updated_by"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 
@@ -793,6 +798,53 @@ export const platformSettings = pgTable("platform_settings", {
   value: jsonb("value").notNull(),
   updatedBy: text("updated_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** F16.3 purchase proofs (invoices, receipts) a merchant uploads for an intake booking; the file lives in the document store. */
+export const documents = pgTable("documents", {
+  id: id(),
+  intakeBookingId: text("intake_booking_id")
+    .notNull()
+    .references(() => intakeBookings.id),
+  merchantId: text("merchant_id").notNull(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  sha256: text("sha256").notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: ts("uploaded_at").notNull().defaultNow(),
+});
+
+/** X12: a lost or damaged parcel and the carrier claim (cap ¥3,000 standard, ¥30,000 insured — F9.5). */
+export const shipmentIncidents = pgTable("shipment_incidents", {
+  id: id(),
+  shipmentId: text("shipment_id").notNull().unique(),
+  kind: text("kind").notNull(), // LOST | DAMAGED
+  note: text("note").notNull(),
+  reportedBy: text("reported_by").notNull(),
+  reportedAt: ts("reported_at").notNull(),
+  claimStatus: text("claim_status").notNull().default("OPEN"), // OPEN | SUBMITTED | PAID | REJECTED
+  claimRef: text("claim_ref"),
+  claimAmount: integer("claim_amount"),
+  updatedAt: ts("updated_at").notNull(),
+});
+
+/** X4: a sealed box replaced before opening by another box of the same product and lot; public and append-only. */
+export const subjectReplacements = pgTable("subject_replacements", {
+  id: id(),
+  lotteryId: text("lottery_id")
+    .notNull()
+    .references(() => lotteries.id),
+  fromUnitId: text("from_unit_id").notNull(),
+  toUnitId: text("to_unit_id").notNull(),
+  fromLabel: text("from_label").notNull(),
+  toLabel: text("to_label").notNull(),
+  lot: text("lot").notNull(),
+  reason: text("reason").notNull(),
+  photoUrls: jsonb("photo_urls").$type<string[]>().notNull().default([]),
+  replacedBy: text("replaced_by").notNull(),
+  replacedAt: ts("replaced_at").notNull(),
 });
 
 /** SV4 capture devices: a station camera posts recording segments with its own token (stored hashed; ADMIN issues / revokes). */

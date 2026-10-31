@@ -12,6 +12,7 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 | ECS task `Migrate` | worker image, runs migrations as the RDS owner |
 | KMS key `SeedKey` | server-seed encryption (T11); only the services' task role may use it |
 | S3 `AuditArchive` | Object Lock compliance mode (10 years in production) for the hourly audit export (T7) |
+| S3 `Documents` | private, versioned; merchants' purchase proofs (F16.3), written and read only by `Admin` (`DOCUMENTS_BUCKET`) |
 | SES identity | when `BOXRUSH_DOMAIN` is set; SPF / DKIM / DMARC records via SST (T5, P15) |
 
 ## First deploy of a stage

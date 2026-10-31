@@ -1,5 +1,5 @@
 "use server";
-import { bookIntake, saveDraft, submitForReview, validateDraft, withdrawToDraft, fail, requireRole } from "@boxrush/services";
+import { bookIntake, documentStore, uploadIntakeDocument, saveDraft, submitForReview, validateDraft, withdrawToDraft, fail, requireRole } from "@boxrush/services";
 import { act, num, str } from "@/lib/action";
 import { parseJstLocal } from "@/lib/jst";
 import { ctx } from "@/lib/session";
@@ -47,5 +47,17 @@ export async function bookIntakeAction(_: ActionResult<unknown> | null, fd: Form
       await bookIntake(ctx(), s, { productId: str(fd, "productId"), expectedQuantity: num(fd, "expectedQuantity"), expectedAt, voucherUrl: str(fd, "voucherUrl") || undefined });
     },
     { revalidate: ["/merchant/intake"], message: "booked" },
+  );
+}
+
+/** F16.3: purchase proof for an intake booking (PDF / JPEG / PNG / WebP, ≤ 10 MB; the type is read from the bytes). */
+export async function uploadDocumentAction(bookingId: string, _: ActionResult<unknown> | null, fd: FormData) {
+  return act(
+    async (s) => {
+      const f = fd.get("file");
+      if (!(f instanceof File) || f.size === 0) fail("DOCUMENT_REQUIRED");
+      return uploadIntakeDocument(ctx(), documentStore(), s, bookingId, { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    },
+    { revalidate: ["/merchant/intake", "/ops/intake"], message: "uploaded" },
   );
 }

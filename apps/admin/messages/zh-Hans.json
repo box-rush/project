@@ -100,7 +100,8 @@
       "O18": "财务",
       "O16": "风控",
       "O17": "审计日志",
-      "O20": "监控"
+      "O20": "监控",
+      "O13incidents": "物流事故"
     }
   },
   "ok": {
@@ -136,7 +137,8 @@
     "markerAdded": "已记录标记",
     "aborted": "本场已中止，将全额退款",
     "openingFinished": "开盒完成，已转入归属",
-    "deviceRegistered": "设备已登记"
+    "deviceRegistered": "设备已登记",
+    "uploaded": "已上传"
   },
   "errors": {
     "UNKNOWN": "发生错误（{code}）",
@@ -224,7 +226,18 @@
     "INVALID_DEVICE": "请输入工位 ID（大写字母、数字、连字符）和名称",
     "INVALID_SEGMENT": "录像片段格式不正确",
     "SEGMENT_CONFLICT": "同一序号的录像片段已以不同内容登记",
-    "UNAUTHORIZED": "认证失败"
+    "UNAUTHORIZED": "认证失败",
+    "INVALID_FAQ": "请检查问题、回答和分类",
+    "CLAIM_CLOSED": "该索赔已结束",
+    "INVALID_AMOUNT": "赔偿额须在上限（{cap}）以内",
+    "INVALID_NOTE": "请在 200 字以内",
+    "NOT_SUBJECT_UNIT": "不是该场次的标的库存",
+    "REPLACEMENT_NOT_AVAILABLE": "替换目标不可用（仅限已检品、在库）",
+    "REPLACEMENT_NOT_SAME_LOT": "只能替换为同商品、同批次的库存",
+    "DOCUMENT_REQUIRED": "请选择文件",
+    "DOCUMENT_TOO_LARGE": "文件不能超过 {max}",
+    "DOCUMENT_TYPE": "仅支持 PDF、JPEG、PNG、WebP",
+    "DOCUMENT_TAMPERED": "文件与记录不一致"
   },
   "issues": {
     "SCHEMA": "输入不完整或格式不正确（{field}）",
@@ -361,7 +374,10 @@
       "INSPECTING": "检验中",
       "PASSED": "合格",
       "FAILED": "不合格"
-    }
+    },
+    "documents": "进货凭证",
+    "upload": "上传",
+    "documentFile": "凭证文件（PDF / 图片，10MB 以内）"
   },
   "review": {
     "title": "审核队列",
@@ -725,7 +741,16 @@
     "confirmAbort": "确认中止（另一名人员）",
     "pendingAbortsTitle": "有 {n} 条录像两路中断报告等待确认",
     "pendingAbortsMine": "你提交的报告（等待其他人确认）",
-    "pendingAbortsOpen": "去确认"
+    "pendingAbortsOpen": "去确认",
+    "replaceTitle": "替换为同批次库存（X4）",
+    "replaceHelp": "只有封条异常且有同商品、同批次的已检品库存时才能替换。替换记录（原/新标签、批次、原因、照片）会在场次页公示。抽选结果（卡号分配）不变。",
+    "replaceFrom": "异常的库存",
+    "replaceTo": "替换为（同批次）",
+    "replaceReason": "原因（会公示）",
+    "replacePhotos": "异常照片 URL（空格分隔）",
+    "replaceSubmit": "替换",
+    "replaceConfirm": "将替换并公示记录。确定吗？",
+    "replaceNone": "没有同批次库存。无法替换时请选择「封条异常中止」。"
   },
   "attribution": {
     "title": "归属工作台",
@@ -782,7 +807,11 @@
       "offList": "清单外",
       "review": "待确认",
       "void": "无效"
-    }
+    },
+    "defect": "记录厂商出厂状态（X9）",
+    "defectLabel": "出厂状态（例：印刷偏移、边角白点）",
+    "defectSave": "记录",
+    "defectShown": "出厂状态：{note}"
   },
   "warehouse": {
     "title": "仓储・发货",
@@ -825,8 +854,31 @@
       "in": "入库（归属后）",
       "req": "发货申请",
       "pack": "打包",
-      "out": "已发货"
-    }
+      "out": "已发货",
+      "inc": "物流事故"
+    },
+    "reportIncident": "记录物流事故",
+    "reportIncidentSubmit": "记录",
+    "reportIncidentConfirm": "将记录为物流事故并通知用户。丢失时卡片会以「物流事故」关闭。确定吗？",
+    "incident": {
+      "LOST": "丢失",
+      "DAMAGED": "破损"
+    },
+    "incidentNote": "情况（运输公司的联系内容等）",
+    "incidentReported": "已记录事故",
+    "incidentKind": "类型",
+    "claimCap": "赔偿上限",
+    "claimStatus": "索赔状态",
+    "claimRef": "索赔编号",
+    "claimAmount": "赔偿额",
+    "claimSave": "更新",
+    "claim": {
+      "OPEN": "未索赔",
+      "SUBMITTED": "已索赔",
+      "PAID": "赔偿确定",
+      "REJECTED": "不予赔偿"
+    },
+    "incidentHelp": "赔偿上限：通常发货 ¥3,000，补偿付き ¥30,000（F9.5）。赔偿如何交付给用户尚未决定（§10.14）。"
   },
   "tickets": {
     "title": "工单",
@@ -854,7 +906,8 @@
     "author": {
       "USER": "用户",
       "STAFF": "员工"
-    }
+    },
+    "faqs": "FAQ / 玩法说明维护"
   },
   "arbitration": {
     "title": "仲裁",
@@ -1020,5 +1073,26 @@
     "deviceRevoke": "停用",
     "deviceRevoked": "已停用",
     "deviceRevokeConfirm": "确定停用此设备的令牌吗？"
+  },
+  "faqs": {
+    "title": "FAQ / 玩法说明维护",
+    "help": "显示在帮助页（玩法、公正性、支付、保管与发货、账号）的内容。设为不公开的条目不会显示。修改会记入审计日志。",
+    "add": "新增条目",
+    "create": "新增",
+    "save": "保存",
+    "section": "分类",
+    "locale": "语言",
+    "sort": "排序",
+    "question": "问题",
+    "answer": "回答",
+    "published": "公开",
+    "hidden": "不公开",
+    "sections": {
+      "GUIDE": "玩法",
+      "FAIRNESS": "公正性",
+      "PAYMENT": "支付",
+      "SHIPPING": "保管与发货",
+      "ACCOUNT": "账号"
+    }
   }
 }

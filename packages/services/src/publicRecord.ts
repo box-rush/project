@@ -1,5 +1,5 @@
 import { DRAW_PUBLISHED, type LotteryStatus } from "@boxrush/core";
-import { and, asc, eq, lotteries, merchants, ne, openedCards, openingMarkers, openingRecords, openingSessions, slots, sql, videoSegments, type DbOrTx } from "@boxrush/db";
+import { and, asc, eq, lotteries, merchants, ne, openedCards, openingMarkers, openingRecords, openingSessions, slots, sql, subjectReplacements, videoSegments, type DbOrTx } from "@boxrush/db";
 
 /**
  * SV6 / V01. Everything here is public and pseudonymous (T9): no user ids, no names.
@@ -14,6 +14,7 @@ export async function buildOpeningRecord(db: DbOrTx, lotteryId: string) {
   const cards = await db.select().from(openedCards).where(and(eq(openedCards.lotteryId, lotteryId), ne(openedCards.status, "VOID"))).orderBy(asc(openedCards.seq));
   const [session] = await db.select().from(openingSessions).where(eq(openingSessions.lotteryId, lotteryId));
   const markers = await db.select().from(openingMarkers).where(eq(openingMarkers.lotteryId, lotteryId)).orderBy(asc(openingMarkers.videoTsSec));
+  const replacements = await db.select().from(subjectReplacements).where(eq(subjectReplacements.lotteryId, lotteryId)).orderBy(asc(subjectReplacements.replacedAt));
   const segs = await db.select().from(videoSegments).where(eq(videoSegments.lotteryId, lotteryId)).orderBy(asc(videoSegments.source), asc(videoSegments.seq));
   return {
     version: 1,
@@ -27,6 +28,10 @@ export async function buildOpeningRecord(db: DbOrTx, lotteryId: string) {
     },
     snapshot: lot.snapshot,
     snapshotHash: lot.snapshotHash,
+    // X4: same-product, same-lot box swaps before opening (absent when there were none, so older records keep their shape)
+    ...(replacements.length
+      ? { replacements: replacements.map((r) => ({ from: r.fromLabel, to: r.toLabel, lot: r.lot, reason: r.reason, photos: r.photoUrls, at: r.replacedAt.toISOString() })) }
+      : {}),
     commitment: { seedCommit: lot.seedCommit, committedAt: lot.seedCommittedAt?.toISOString() ?? null },
     participants: drawn ? { text: lot.participantsText, hash: lot.participantsHash } : null,
     draw: drawn
@@ -49,7 +54,7 @@ export async function buildOpeningRecord(db: DbOrTx, lotteryId: string) {
           segments: segs.map((s) => ({ source: s.source, seq: s.seq, startedAt: s.startedAt.toISOString(), endedAt: s.endedAt.toISOString(), sha256: s.sha256, backfilled: s.backfilled })),
         }
       : null,
-    cards: cards.map((c) => ({ seq: c.seq, number: c.cardNumber, name: c.name, rarity: c.rarity, slot: c.slotNumber, method: c.method, status: c.status, offList: c.offList, ts: c.videoTsSec })),
+    cards: cards.map((c) => ({ seq: c.seq, number: c.cardNumber, name: c.name, rarity: c.rarity, slot: c.slotNumber, method: c.method, status: c.status, offList: c.offList, ts: c.videoTsSec, ...(c.defectNote ? { defect: c.defectNote } : {}) })),
   };
 }
 

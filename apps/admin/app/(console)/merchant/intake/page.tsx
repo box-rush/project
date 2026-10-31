@@ -1,9 +1,9 @@
 import { getTranslations } from "next-intl/server";
-import { listProducts, merchantIntakes } from "@boxrush/services";
+import { documentsForBookings, listProducts, merchantIntakes } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { Empty, Field, Jst, PageHeader } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { bookIntakeAction } from "../actions";
+import { bookIntakeAction, uploadDocumentAction } from "../actions";
 
 const TONE: Record<string, string> = { BOOKED: "badge-primary", INSPECTING: "badge-warning", PASSED: "badge-trust", FAILED: "badge-error" };
 
@@ -13,6 +13,7 @@ export default async function MerchantIntake() {
   const products = await listProducts(ctx());
   const rows = staff.merchantId ? await merchantIntakes(ctx(), staff.merchantId) : [];
   const series = new Map(products.map((p) => [p.id, p.series]));
+  const docs = await documentsForBookings(ctx(), rows.map((r) => r.id));
   return (
     <>
       <PageHeader title={t("title")} code="B06" />
@@ -53,6 +54,7 @@ export default async function MerchantIntake() {
                   <th>{t("expectedAt")}</th>
                   <th>{t("status")}</th>
                   <th>{t("failReason")}</th>
+                  <th>{t("documents")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -67,6 +69,22 @@ export default async function MerchantIntake() {
                       <span className={`badge ${TONE[r.status] ?? ""}`}>{t(`statuses.${r.status}`)}</span>
                     </td>
                     <td className="text-xs">{r.failReason ?? ""}</td>
+                    <td className="text-xs">
+                      <ul>
+                        {docs
+                          .filter((d) => d.intakeBookingId === r.id)
+                          .map((d) => (
+                            <li key={d.id}>
+                              <a href={`/api/documents/${d.id}`} className="text-primary underline">
+                                {d.fileName}
+                              </a>
+                            </li>
+                          ))}
+                      </ul>
+                      <ActionForm action={uploadDocumentAction.bind(null, r.id)} submitLabel={t("upload")} submitClass="btn !min-h-7 text-xs" inline>
+                        <input name="file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="text-xs" aria-label={t("documentFile")} required />
+                      </ActionForm>
+                    </td>
                   </tr>
                 ))}
               </tbody>

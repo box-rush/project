@@ -1,4 +1,4 @@
-import { and, asc, banners, desc, eq, faqs, inArray, lotteries, merchants, notifications, orders, refunds, slots, sql } from "@boxrush/db";
+import { and, asc, banners, desc, eq, faqs, inArray, lotteries, merchants, notifications, orders, refunds, slots, sql, subjectReplacements } from "@boxrush/db";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
 
@@ -82,6 +82,12 @@ export async function lotteryDetail(ctx: Ctx, code: string, viewerUserId?: strin
     mine,
     myOrders,
     delay: lot.delayNotice ? (JSON.parse(lot.delayNotice) as { reason: string; newOpeningAt: string; postedAt: string }) : null,
+    // X4 swaps are public (label, lot, reason, photos — never who did it)
+    replacements: await ctx.db
+      .select({ from: subjectReplacements.fromLabel, to: subjectReplacements.toLabel, lot: subjectReplacements.lot, reason: subjectReplacements.reason, photos: subjectReplacements.photoUrls, at: subjectReplacements.replacedAt })
+      .from(subjectReplacements)
+      .where(eq(subjectReplacements.lotteryId, lot.id))
+      .orderBy(asc(subjectReplacements.replacedAt)),
   };
 }
 
@@ -113,7 +119,7 @@ export async function activeBanners(ctx: Ctx) {
 }
 
 export async function listFaqs(ctx: Ctx, locale = "ja") {
-  return ctx.db.select().from(faqs).where(eq(faqs.locale, locale)).orderBy(asc(faqs.section), asc(faqs.sort));
+  return ctx.db.select().from(faqs).where(and(eq(faqs.locale, locale), eq(faqs.published, true))).orderBy(asc(faqs.section), asc(faqs.sort));
 }
 
 export async function myNotifications(ctx: Ctx, userId: string) {

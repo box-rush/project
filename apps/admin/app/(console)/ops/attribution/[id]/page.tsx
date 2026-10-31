@@ -6,7 +6,7 @@ import { attributionDetail, frozenRecord } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { JstFull, LotCode, MethodBadge, PageHeader, Rarity, StatusBadge } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { confirmAction, correctAction, finalizeAction, proposeAction } from "../../actions";
+import { confirmAction, defectNoteAction, correctAction, finalizeAction, proposeAction } from "../../actions";
 
 export default async function AttributionDesk({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string }> }) {
   const { id } = await params;
@@ -133,6 +133,15 @@ export default async function AttributionDesk({ params, searchParams }: { params
                   <td>
                     <span className={`badge ${c.status === "NEEDS_REVIEW" ? "badge-primary" : ""}`}>{statusLabel(c)}</span>
                     {c.note ? <div className="max-w-[200px] text-[11px] text-ink2">{c.note}</div> : null}
+                    {c.defectNote ? <div className="max-w-[200px] text-[11px] font-semibold text-warning">{t("defectShown", { note: c.defectNote })}</div> : null}
+                    {attributing && c.status !== "VOID" ? (
+                      <details className="text-[11px]">
+                        <summary className="cursor-pointer text-ink2">{t("defect")}</summary>
+                        <ActionForm action={defectNoteAction.bind(null, id, c.id)} submitLabel={t("defectSave")} submitClass="btn !min-h-7 text-xs">
+                          <input name="defect" className="input !min-h-7 text-xs" maxLength={200} defaultValue={c.defectNote ?? ""} aria-label={t("defectLabel")} placeholder={t("defectLabel")} />
+                        </ActionForm>
+                      </details>
+                    ) : null}
                   </td>
                   <td className="text-[11px] leading-tight">
                     <div>

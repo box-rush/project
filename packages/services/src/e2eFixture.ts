@@ -12,7 +12,7 @@ import { createRuntime, mockPayments } from "./runtime";
 if (process.env.NODE_ENV === "production") throw new Error("e2eFixture is a dev tool");
 
 async function main() {
-  const args = JSON.parse(process.argv[2] ?? "{}") as { buyers: { email: string; count: number }[]; openInMinutes?: number; title?: string; stage?: "PENDING_REVIEW" | "ON_SALE" | "READY"; slots?: number; slotPrice?: number };
+  const args = JSON.parse(process.argv[2] ?? "{}") as { buyers: { email: string; count: number }[]; openInMinutes?: number; title?: string; stage?: "PENDING_REVIEW" | "ON_SALE" | "READY"; slots?: number; slotPrice?: number; spareSameLot?: boolean };
   const ctx = createRuntime();
   const db = ctx.db;
   const principal = async (email: string): Promise<StaffPrincipal> => {
@@ -25,7 +25,10 @@ async function main() {
   const [tpl] = await db.select().from(checklistTemplates).where(eq(checklistTemplates.productId, product!.id));
   const slots = args.slots ?? args.buyers.reduce((n, b) => n + b.count, 0);
   const tag = Math.random().toString(36).slice(2, 8).toUpperCase();
-  const box = await receiveUnit(ctx, wh, { kind: "SEALED", merchantId: merchant!.id, productId: product!.id, label: `BX-FX-${tag}`, sealPhotoUrls: ["/mock/seal.svg"], passed: true });
+  const boxLot = `FX-${tag}`;
+  const box = await receiveUnit(ctx, wh, { kind: "SEALED", merchantId: merchant!.id, productId: product!.id, label: `BX-FX-${tag}`, sealPhotoUrls: ["/mock/seal.svg"], passed: true, lot: boxLot });
+  // X4: a second inspected box of the same product and lot, available as a replacement
+  if (args.spareSameLot) await receiveUnit(ctx, wh, { kind: "SEALED", merchantId: merchant!.id, productId: product!.id, label: `BX-FX-${tag}-SPARE`, sealPhotoUrls: ["/mock/seal.svg"], passed: true, lot: boxLot });
   const g = [];
   for (let i = 0; i < slots - 1; i++)
     g.push(await receiveUnit(ctx, wh, { kind: "GUARANTEE_CARD", merchantId: merchant!.id, label: `GC-FX-${tag}-${i}`, sealPhotoUrls: ["/mock/guarantee.svg"], passed: true, cardName: "保証カード", cardRarity: "PR", referencePrice: 300 }));

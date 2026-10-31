@@ -136,7 +136,9 @@
     "slotsTable": "Card numbers by slot",
     "noNumbers": "No card numbers (guarantee card if there are none)",
     "snapshotHash": "Rules hash",
-    "notFound": "Not found"
+    "notFound": "Not found",
+    "replaced": "The seal was broken, so the box was replaced before opening with a sealed box of the same lot",
+    "replacedDetail": "{from} → {to} (lot {lot}, {at})"
   },
   "checkout": {
     "title": "Review your purchase",
@@ -201,7 +203,9 @@
     "mineOnly": "My slots only",
     "appeal": "File an appeal",
     "offList": "Not on list",
-    "pending": "Shown once attribution is confirmed"
+    "pending": "Shown once attribution is confirmed",
+    "defect": "Maker condition: {note}",
+    "defectHelp": "Maker condition confirmed on the recording; attributed as opened"
   },
   "video": {
     "title": "Recording",
@@ -254,7 +258,8 @@
     "tabs": {
       "STORED": "In storage",
       "SHIPPING": "Shipping",
-      "RECEIVED": "Received"
+      "RECEIVED": "Received",
+      "LOST": "Shipping incident"
     },
     "freeUntil": "Free storage until {at}",
     "select": "Select",
@@ -267,7 +272,13 @@
     "videoAt": "Opening recording {t}",
     "photo": "Photo of the actual card (scanning station camera)",
     "noShipments": "No shipments yet",
-    "shipments": "Shipment history"
+    "shipments": "Shipment history",
+    "defect": "Condition from the maker: {note}",
+    "defectHelp": "Condition confirmed on the opening recording. The card is attributed and delivered as opened (not covered by platform compensation).",
+    "incident": {
+      "LOST": "Lost in transit. We are claiming compensation from the carrier.",
+      "DAMAGED": "Damaged in transit. We are claiming compensation from the carrier."
+    }
   },
   "ship": {
     "title": "Request shipping",
@@ -291,13 +302,25 @@
       "SHIPPED": "Shipped",
       "DELIVERED": "Delivered",
       "RETURNED": "Returned",
-      "CANCELLED": "Cancelled"
+      "CANCELLED": "Cancelled",
+      "LOST": "Lost in transit"
     },
     "tracking": "Tracking number",
     "carrier": "Carrier",
     "forced": "Shipped because the storage period ended",
     "detail": "Shipment details",
-    "compensationCap": "Compensation cap {amount}"
+    "compensationCap": "Compensation cap {amount}",
+    "incident": {
+      "LOST": "Lost in transit",
+      "DAMAGED": "Damaged in transit"
+    },
+    "claimInfo": "We are claiming compensation from the carrier (cap {cap}). We will post the result here and by email.",
+    "claim": {
+      "OPEN": "Preparing the claim",
+      "SUBMITTED": "Claim submitted to the carrier",
+      "PAID": "The carrier accepted the claim",
+      "REJECTED": "The carrier rejected the claim. Please contact support"
+    }
   },
   "orders": {
     "title": "Orders and refunds",

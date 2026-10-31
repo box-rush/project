@@ -5,7 +5,7 @@ const ADMIN = process.env.E2E_ADMIN_URL ?? "http://localhost:3101";
 const PAGES = [
   "/merchant/lotteries", "/merchant/lotteries/new", "/merchant/intake", "/ops/dashboard", "/ops/review", "/ops/schedule", "/ops/pricing",
   "/ops/products", "/ops/checklists", "/ops/banners", "/ops/coupons", "/station", "/ops/attribution", "/ops/warehouse", "/ops/intake",
-  "/ops/inventory", "/ops/procurement", "/ops/tickets", "/ops/arbitration", "/ops/finance", "/ops/risk", "/ops/audit", "/ops/monitoring",
+  "/ops/inventory", "/ops/procurement", "/ops/tickets", "/ops/arbitration", "/ops/finance", "/ops/risk", "/ops/audit", "/ops/monitoring", "/ops/incidents", "/ops/tickets/faqs",
 ];
 
 test("staff login requires TOTP; every back-office page renders for admin, none offers a draw trigger or video upload", async ({ page }) => {

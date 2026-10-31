@@ -1,5 +1,9 @@
 "use server";
 import {
+  setDefectNote,
+  reportShipmentIncident,
+  updateIncidentClaim,
+  saveFaq,
   registerDevice,
   revokeDevice,
   advanceShipment,
@@ -317,4 +321,35 @@ export async function registerDeviceAction(_: Prev, fd: FormData) {
 
 export async function revokeDeviceAction(deviceId: string, _: Prev) {
   return act((s) => revokeDevice(ctx(), s, deviceId), { revalidate: ["/ops/monitoring"], message: "saved" });
+}
+
+const faqInputFrom = (fd: FormData) => ({
+  section: str(fd, "section") as "GUIDE",
+  locale: (str(fd, "locale") || "ja") as "ja",
+  question: str(fd, "question"),
+  answer: str(fd, "answer"),
+  sort: num(fd, "sort"),
+  published: bool(fd, "published"),
+});
+export async function createFaqAction(_: Prev, fd: FormData) {
+  return act((s) => saveFaq(ctx(), s, faqInputFrom(fd)), { revalidate: ["/ops/tickets/faqs"], message: "created" });
+}
+export async function updateFaqAction(id: string, _: Prev, fd: FormData) {
+  return act((s) => saveFaq(ctx(), s, faqInputFrom(fd), id), { revalidate: ["/ops/tickets/faqs"], message: "saved" });
+}
+
+export async function reportIncidentAction(shipmentId: string, _: Prev, fd: FormData) {
+  return act((s) => reportShipmentIncident(ctx(), s, shipmentId, str(fd, "kind") === "DAMAGED" ? "DAMAGED" : "LOST", str(fd, "note")), {
+    revalidate: ["/ops/warehouse"],
+    message: "saved",
+  });
+}
+export async function updateClaimAction(incidentId: string, _: Prev, fd: FormData) {
+  const status = str(fd, "status") as "SUBMITTED" | "PAID" | "REJECTED";
+  const amount = str(fd, "amount") ? num(fd, "amount") : undefined;
+  return act((s) => updateIncidentClaim(ctx(), s, incidentId, { status, claimRef: str(fd, "claimRef") || undefined, amount }), { revalidate: ["/ops/warehouse"], message: "saved" });
+}
+
+export async function defectNoteAction(lotteryId: string, cardId: string, _: Prev, fd: FormData) {
+  return act((s) => setDefectNote(ctx(), s, cardId, str(fd, "defect")), { revalidate: [`/ops/attribution/${lotteryId}`], message: "saved" });
 }

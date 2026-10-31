@@ -1,5 +1,5 @@
 import { PARAMS, addDays, formatJst, formatYen, quoteShipment } from "@boxrush/core";
-import { addresses, and, asc, collectionItems, coupons, eq, inArray, isNull, lotteries, lt, paymentMethods, refunds, shipments, slots, sql, users, type DbOrTx } from "@boxrush/db";
+import { addresses, and, asc, collectionItems, coupons, desc, eq, inArray, isNull, lotteries, lt, paymentMethods, refunds, shipmentIncidents, shipments, slots, sql, users, type DbOrTx } from "@boxrush/db";
 import type { CreatePaymentInput, PaymentEvent } from "./adapters/payments";
 import { audit, SYSTEM } from "./audit";
 import type { Ctx } from "./context";
@@ -186,14 +186,74 @@ export async function markDelivered(ctx: Ctx, shipmentId: string) {
     await tx.update(collectionItems).set({ state: "RECEIVED" }).where(eq(collectionItems.shipmentId, shipmentId));
     await notify(tx, s.userId, "DELIVERED", {}, `delivered:${s.id}`, now);
     await audit(tx, SYSTEM, "shipment.delivered", "shipment", shipmentId, {}, now);
-    // FULFILLING → COMPLETED once every item of a lottery has been received
-    const lots = await tx.selectDistinct({ id: collectionItems.lotteryId }).from(collectionItems).where(eq(collectionItems.shipmentId, shipmentId));
-    for (const { id } of lots) {
-      const open = await tx.execute<{ c: string }>(sql`SELECT count(*)::text AS c FROM collection_items WHERE lottery_id = ${id} AND state <> 'RECEIVED'`);
-      const lot = await lockLottery(tx, id);
-      if (Number(open.rows[0]?.c) === 0 && lot.status === "FULFILLING") await transition(tx, lot, "COMPLETED", SYSTEM, {}, now);
-    }
+    await completeFulfilledLotteries(tx, shipmentId, now);
   });
+}
+
+/** FULFILLING → COMPLETED once every item of a lottery has left our hands (received, or lost by the carrier — X12). */
+async function completeFulfilledLotteries(tx: DbOrTx, shipmentId: string, now: Date) {
+  const lots = await tx.selectDistinct({ id: collectionItems.lotteryId }).from(collectionItems).where(eq(collectionItems.shipmentId, shipmentId));
+  for (const { id } of lots) {
+    const open = await tx.execute<{ c: string }>(sql`SELECT count(*)::text AS c FROM collection_items WHERE lottery_id = ${id} AND state NOT IN ('RECEIVED', 'LOST')`);
+    const lot = await lockLottery(tx, id);
+    if (Number(open.rows[0]?.c) === 0 && lot.status === "FULFILLING") await transition(tx, lot, "COMPLETED", SYSTEM, {}, now);
+  }
+}
+
+/**
+ * X12: a parcel the carrier lost (from SHIPPED) or delivered damaged (SHIPPED / DELIVERED). The platform, as shipper,
+ * claims from the carrier up to the service's cap (¥3,000 standard, ¥30,000 insured — F9.5). Lost items are closed as
+ * LOST so the lottery can complete; the user is told. How a paid claim reaches the user is not decided yet (§10.14).
+ */
+export async function reportShipmentIncident(ctx: Ctx, p: StaffPrincipal, shipmentId: string, kind: "LOST" | "DAMAGED", note: string) {
+  requireRole(p, "WAREHOUSE", "CS");
+  if (!note.trim()) fail("NOTE_REQUIRED");
+  const now = ctx.now();
+  await ctx.db.transaction(async (tx) => {
+    const [s] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId)).for("update");
+    if (!s) fail("NOT_FOUND");
+    const allowed = kind === "LOST" ? ["SHIPPED"] : ["SHIPPED", "DELIVERED"];
+    if (!allowed.includes(s.status)) fail("INVALID_STEP", { from: s.status, to: kind });
+    const [exists] = await tx.select({ id: shipmentIncidents.id }).from(shipmentIncidents).where(eq(shipmentIncidents.shipmentId, shipmentId));
+    if (exists) fail("DUPLICATE");
+    await tx.insert(shipmentIncidents).values({ shipmentId, kind, note: note.trim(), reportedBy: p.id, reportedAt: now, updatedAt: now });
+    if (kind === "LOST") {
+      await tx.update(shipments).set({ status: "LOST" }).where(eq(shipments.id, shipmentId));
+      await tx.update(collectionItems).set({ state: "LOST" }).where(eq(collectionItems.shipmentId, shipmentId));
+      await completeFulfilledLotteries(tx, shipmentId, now);
+    }
+    const cap = s.insured ? PARAMS.insuredCompensationCap : PARAMS.standardCompensationCap;
+    await notify(tx, s.userId, "SHIPMENT_INCIDENT", { code: s.code, kind, cap: formatYen(cap) }, `incident:${shipmentId}`, now);
+    await audit(tx, staffActor(p), "shipment.incident", "shipment", shipmentId, { kind, note: note.trim() }, now);
+  });
+}
+
+/** X12 claim progress with the carrier (claim reference, amount paid). */
+export async function updateIncidentClaim(ctx: Ctx, p: StaffPrincipal, incidentId: string, input: { status: "SUBMITTED" | "PAID" | "REJECTED"; claimRef?: string; amount?: number }) {
+  requireRole(p, "CS", "FINANCE");
+  const now = ctx.now();
+  await ctx.db.transaction(async (tx) => {
+    const [i] = await tx.select().from(shipmentIncidents).where(eq(shipmentIncidents.id, incidentId)).for("update");
+    if (!i) fail("NOT_FOUND");
+    if (i.claimStatus === "PAID" || i.claimStatus === "REJECTED") fail("CLAIM_CLOSED");
+    const [s] = await tx.select({ insured: shipments.insured }).from(shipments).where(eq(shipments.id, i.shipmentId));
+    const cap = s?.insured ? PARAMS.insuredCompensationCap : PARAMS.standardCompensationCap;
+    if (input.status === "PAID" && !(Number.isInteger(input.amount) && input.amount! > 0 && input.amount! <= cap)) fail("INVALID_AMOUNT", { cap: formatYen(cap) });
+    await tx
+      .update(shipmentIncidents)
+      .set({ claimStatus: input.status, claimRef: input.claimRef?.trim() || i.claimRef, claimAmount: input.status === "PAID" ? input.amount! : i.claimAmount, updatedAt: now })
+      .where(eq(shipmentIncidents.id, incidentId));
+    await audit(tx, staffActor(p), "shipment.claim", "shipment", i.shipmentId, { status: input.status, claimRef: input.claimRef ?? null, amount: input.amount ?? null }, now);
+  });
+}
+
+export async function listIncidents(ctx: Ctx, p: StaffPrincipal) {
+  requireRole(p, "WAREHOUSE", "CS", "FINANCE");
+  return ctx.db
+    .select({ incident: shipmentIncidents, code: shipments.code, insured: shipments.insured, trackingNumber: shipments.trackingNumber, itemCount: shipments.itemCount })
+    .from(shipmentIncidents)
+    .innerJoin(shipments, eq(shipments.id, shipmentIncidents.shipmentId))
+    .orderBy(desc(shipmentIncidents.reportedAt));
 }
 
 /** F11.4: one reminder before the free storage period ends. */

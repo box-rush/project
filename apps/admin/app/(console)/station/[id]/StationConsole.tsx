@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { formatJst, formatVideoTs } from "@boxrush/core/format";
 import { ResultMessage } from "@/components/ResultMessage";
 import type { ActionResult } from "@/lib/result";
+import { ReplaceSubject } from "./ReplaceSubject";
 import { enterCardAction, finishAction, markerAction, recordingAction, sealAnomalyAction, startOpeningAction, voidLastAction, confirmAbortAction } from "../actions";
 
 interface Card {
@@ -32,6 +33,7 @@ export function StationConsole({
   hint,
   subjectUnits,
   checklistSize,
+  replacementOptions,
 }: {
   me: string;
   lottery: { id: string; status: string; openingAt: string; totalSlots: number; abortReason: string | null };
@@ -41,6 +43,7 @@ export function StationConsole({
   hint: string | null;
   subjectUnits: { label: string; photos: number }[];
   checklistSize: number;
+  replacementOptions: { from: { id: string; label: string; lot: string | null }; candidates: { id: string; label: string }[] }[];
 }) {
   const t = useTranslations("station");
   const router = useRouter();
@@ -158,6 +161,7 @@ export function StationConsole({
           >
             {t("sealAnomaly")}
           </button>
+          <ReplaceSubject lotteryId={lottery.id} options={replacementOptions} />
           <ResultMessage result={result} />
         </div>
       </div>

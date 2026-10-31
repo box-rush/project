@@ -29,7 +29,7 @@ export function stopWorker(w: ChildProcess | undefined) {
 }
 
 /** A sold-out, drawn (READY) lottery opening in a few minutes — see packages/services/src/e2eFixture.ts. */
-export function readyLottery(buyers: { email: string; count: number }[], opts: { openInMinutes?: number; stage?: "PENDING_REVIEW" | "ON_SALE"; slots?: number; slotPrice?: number } = {}): { lotteryId: string; code: string } {
+export function readyLottery(buyers: { email: string; count: number }[], opts: { openInMinutes?: number; stage?: "PENDING_REVIEW" | "ON_SALE"; slots?: number; slotPrice?: number; spareSameLot?: boolean } = {}): { lotteryId: string; code: string } {
   const out = execFileSync("pnpm", ["--silent", "--filter", "@boxrush/services", "exec", "tsx", "src/e2eFixture.ts", JSON.stringify({ buyers, ...opts })], {
     env: { ...process.env, ...SERVICE_ENV },
     encoding: "utf8",

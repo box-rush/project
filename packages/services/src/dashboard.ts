@@ -27,7 +27,7 @@ export async function dashboard(ctx: Ctx, p: StaffPrincipal, range: { from: Date
   const fillHours = rows.filter((r) => r.soldOut).map((r) => (new Date(r.sold_out_at!).getTime() - new Date(r.sale_starts_at).getTime()) / 3600_000);
 
   const ships = await ctx.db.execute<{ slot_count: number; coupon_id: string | null; forced: boolean }>(
-    sql`SELECT slot_count, coupon_id, forced FROM shipments WHERE status IN ('REQUESTED','PICKING','PACKED','SHIPPED','DELIVERED') AND requested_at BETWEEN ${range.from} AND ${range.to}`,
+    sql`SELECT slot_count, coupon_id, forced FROM shipments WHERE status IN ('REQUESTED','PICKING','PACKED','SHIPPED','DELIVERED','LOST') AND requested_at BETWEEN ${range.from} AND ${range.to}`,
   );
   const k = consolidationK(ships.rows.map((s) => ({ slotCount: s.slot_count, couponUsed: s.coupon_id !== null, forced: s.forced })));
 

@@ -100,7 +100,8 @@
       "O18": "経理",
       "O16": "リスク",
       "O17": "監査ログ",
-      "O20": "監視"
+      "O20": "監視",
+      "O13incidents": "配送事故"
     }
   },
   "ok": {
@@ -136,7 +137,8 @@
     "markerAdded": "マーカーを記録しました",
     "aborted": "この開封会は中止されました。全額返金の手続きに入ります",
     "openingFinished": "開封を完了し、振り分けへ送りました",
-    "deviceRegistered": "デバイスを登録しました"
+    "deviceRegistered": "デバイスを登録しました",
+    "uploaded": "アップロードしました"
   },
   "errors": {
     "UNKNOWN": "エラーが発生しました（{code}）",
@@ -224,7 +226,18 @@
     "INVALID_DEVICE": "ステーションID（英大文字・数字・ハイフン）と名称を入力してください",
     "INVALID_SEGMENT": "録画セグメントの形式が正しくありません",
     "SEGMENT_CONFLICT": "同じ番号の録画セグメントが別の内容で登録済みです",
-    "UNAUTHORIZED": "認証に失敗しました"
+    "UNAUTHORIZED": "認証に失敗しました",
+    "INVALID_FAQ": "質問・回答・区分を確認してください",
+    "CLAIM_CLOSED": "この請求は完了しています",
+    "INVALID_AMOUNT": "補償額は上限（{cap}）以内で入力してください",
+    "INVALID_NOTE": "200文字以内で入力してください",
+    "NOT_SUBJECT_UNIT": "この開封会の対象在庫ではありません",
+    "REPLACEMENT_NOT_AVAILABLE": "差し替え先の在庫が使えません（検品済み・在庫中のみ）",
+    "REPLACEMENT_NOT_SAME_LOT": "同じ商品・同じロットの在庫だけに差し替えられます",
+    "DOCUMENT_REQUIRED": "ファイルを選んでください",
+    "DOCUMENT_TOO_LARGE": "ファイルは{max}までです",
+    "DOCUMENT_TYPE": "PDF・JPEG・PNG・WebPのみアップロードできます",
+    "DOCUMENT_TAMPERED": "ファイルが記録と一致しません"
   },
   "issues": {
     "SCHEMA": "入力が不足しているか、形式が正しくありません（{field}）",
@@ -361,7 +374,10 @@
       "INSPECTING": "検品中",
       "PASSED": "合格",
       "FAILED": "不合格"
-    }
+    },
+    "documents": "仕入れ証憑",
+    "upload": "アップロード",
+    "documentFile": "証憑ファイル（PDF・画像、10MBまで）"
   },
   "review": {
     "title": "審査キュー",
@@ -725,7 +741,16 @@
     "confirmAbort": "中止を確認する（別の担当者）",
     "pendingAbortsTitle": "録画の両系統断の報告が {n} 件、確認待ちです",
     "pendingAbortsMine": "あなたの報告（別の担当者の確認待ち）",
-    "pendingAbortsOpen": "確認する"
+    "pendingAbortsOpen": "確認する",
+    "replaceTitle": "同じロットの在庫に差し替える（X4）",
+    "replaceHelp": "封緘に異常があり、同じ商品・同じロットの検品済み在庫がある場合だけ差し替えられます。差し替えの記録（元・新ラベル、ロット、理由、写真）は開封会ページで公開されます。抽選結果（カード番号の割り当て）は変わりません。",
+    "replaceFrom": "異常のある在庫",
+    "replaceTo": "差し替え先（同じロット）",
+    "replaceReason": "理由（公開されます）",
+    "replacePhotos": "異常の写真URL（スペース区切り）",
+    "replaceSubmit": "差し替える",
+    "replaceConfirm": "差し替えて記録を公開します。よろしいですか？",
+    "replaceNone": "同じロットの在庫がありません。差し替えできない場合は「封印異常のため中止」を選んでください。"
   },
   "attribution": {
     "title": "振り分け",
@@ -782,7 +807,11 @@
       "offList": "リスト外",
       "review": "要確認",
       "void": "無効"
-    }
+    },
+    "defect": "メーカー出荷時の状態を記録（X9）",
+    "defectLabel": "出荷時の状態（例：印刷ズレ、角の白欠け）",
+    "defectSave": "記録",
+    "defectShown": "出荷時の状態：{note}"
   },
   "warehouse": {
     "title": "倉庫・出荷",
@@ -825,8 +854,31 @@
       "in": "入庫（振り分け後）",
       "req": "出荷依頼",
       "pack": "梱包",
-      "out": "出荷済"
-    }
+      "out": "出荷済",
+      "inc": "配送事故"
+    },
+    "reportIncident": "配送事故を記録",
+    "reportIncidentSubmit": "記録する",
+    "reportIncidentConfirm": "配送事故として記録し、お客様に通知します。紛失の場合はカードを「配送事故」として閉じます。よろしいですか？",
+    "incident": {
+      "LOST": "紛失",
+      "DAMAGED": "破損"
+    },
+    "incidentNote": "状況（運送会社の連絡内容など）",
+    "incidentReported": "事故記録済み",
+    "incidentKind": "種別",
+    "claimCap": "補償上限",
+    "claimStatus": "請求状況",
+    "claimRef": "請求番号",
+    "claimAmount": "補償額",
+    "claimSave": "更新",
+    "claim": {
+      "OPEN": "未請求",
+      "SUBMITTED": "請求済み",
+      "PAID": "補償確定",
+      "REJECTED": "補償不可"
+    },
+    "incidentHelp": "補償上限：通常発送 ¥3,000、補償付き ¥30,000（F9.5）。お客様への補償の渡し方は未決定です（§10.14）。"
   },
   "tickets": {
     "title": "問い合わせ",
@@ -854,7 +906,8 @@
     "author": {
       "USER": "ユーザー",
       "STAFF": "スタッフ"
-    }
+    },
+    "faqs": "FAQ・遊び方の管理"
   },
   "arbitration": {
     "title": "仲裁",
@@ -1020,5 +1073,26 @@
     "deviceRevoke": "無効化",
     "deviceRevoked": "無効",
     "deviceRevokeConfirm": "このデバイスのトークンを無効にします。よろしいですか？"
+  },
+  "faqs": {
+    "title": "FAQ・遊び方の管理",
+    "help": "ヘルプページ（遊び方・公正性・お支払い・保管と発送・アカウント）に表示する内容です。非公開にした項目は表示されません。変更は監査ログに残ります。",
+    "add": "項目を追加",
+    "create": "追加する",
+    "save": "保存",
+    "section": "区分",
+    "locale": "言語",
+    "sort": "並び順",
+    "question": "質問",
+    "answer": "回答",
+    "published": "公開する",
+    "hidden": "非公開",
+    "sections": {
+      "GUIDE": "遊び方",
+      "FAIRNESS": "公正性",
+      "PAYMENT": "お支払い",
+      "SHIPPING": "保管・発送",
+      "ACCOUNT": "アカウント"
+    }
   }
 }

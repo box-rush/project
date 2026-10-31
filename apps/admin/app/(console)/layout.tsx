@@ -14,7 +14,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   const sections = navFor(staff.roles).map((s) => ({
     key: s.key,
     label: tn(`section.${s.key}`),
-    items: s.items.map((i) => ({ href: i.href, code: i.key, label: tn(`item.${i.key}`) })),
+    items: s.items.map((i) => ({ href: i.href, code: i.key, label: tn(`item.${i.labelKey ?? i.key}`) })),
   }));
   return (
     <div className="grid min-h-screen grid-cols-[232px_1fr]">

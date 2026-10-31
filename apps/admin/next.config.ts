@@ -11,6 +11,8 @@ const config: NextConfig = {
   transpilePackages: ["@boxrush/core", "@boxrush/db", "@boxrush/services"],
   serverExternalPackages: ["pg", "stripe"],
   poweredByHeader: false,
+  // F16.3 purchase proofs up to 10 MB go through a server action
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
 };
 
 export default withNextIntl(config);

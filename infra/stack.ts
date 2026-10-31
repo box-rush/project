@@ -78,6 +78,9 @@ new aws.s3.BucketObjectLockConfigurationV2("AuditArchiveLock", {
   rule: { defaultRetention: { mode: "COMPLIANCE", years: isProd ? 10 : 1 } },
 });
 
+// F16.3 purchase proofs: private, versioned, never public; only the back office reads and writes it
+const documentsBucket = new sst.aws.Bucket("Documents", { versioning: true });
+
 const email = domain ? new sst.aws.Email("Email", { sender: domain, dmarc: "v=DMARC1; p=quarantine; adkim=s; aspf=s;" }) : undefined;
 
 // ── runtime environment ─────────────────────────────────────────────────────────────────────────
@@ -112,7 +115,11 @@ const rngForAdmin = { RNG_DATABASE_URL: rngDbUrl, RNG_KMS_KEY_ID: seedKey.arn };
 const sendEmail = email ? [{ actions: ["ses:SendEmail", "ses:SendRawEmail"], resources: ["*"] }] : [];
 const permissions = {
   web: [...sendEmail],
-  admin: [{ actions: ["kms:Encrypt"], resources: [seedKey.arn] }, ...sendEmail],
+  admin: [
+    { actions: ["kms:Encrypt"], resources: [seedKey.arn] },
+    { actions: ["s3:PutObject", "s3:GetObject"], resources: [$interpolate`${documentsBucket.arn}/*`] },
+    ...sendEmail,
+  ],
   worker: [
     { actions: ["kms:Encrypt", "kms:Decrypt"], resources: [seedKey.arn] },
     { actions: ["s3:PutObject", "s3:PutObjectRetention"], resources: [$interpolate`${auditArchive.arn}/*`] },
@@ -158,7 +165,7 @@ new sst.aws.Service("Admin", {
   memory: "0.5 GB",
   scaling: { min: 1, max: 2 },
   permissions: permissions.admin,
-  environment: { ...common, ...rngForAdmin },
+  environment: { ...common, ...rngForAdmin, DOCUMENTS_BUCKET: documentsBucket.name },
   loadBalancer: {
     domain: adminHost,
     rules: adminHost

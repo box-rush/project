@@ -136,7 +136,9 @@
     "slotsTable": "各位的卡号",
     "noNumbers": "无卡号（0 张时配保底卡）",
     "snapshotHash": "规则哈希",
-    "notFound": "未找到"
+    "notFound": "未找到",
+    "replaced": "因封条异常，开盒前已替换为同批次的未开封盒",
+    "replacedDetail": "{from} → {to}（批次 {lot}・{at}）"
   },
   "checkout": {
     "title": "确认购买内容",
@@ -201,7 +203,9 @@
     "mineOnly": "仅看我的位",
     "appeal": "提出申诉",
     "offList": "清单外",
-    "pending": "归属确定后显示"
+    "pending": "归属确定后显示",
+    "defect": "出厂状态：{note}",
+    "defectHelp": "录像中确认的厂商出厂状态，按开盒原状归属"
   },
   "video": {
     "title": "录像",
@@ -254,7 +258,8 @@
     "tabs": {
       "STORED": "保管中",
       "SHIPPING": "发货中",
-      "RECEIVED": "已收货"
+      "RECEIVED": "已收货",
+      "LOST": "物流事故"
     },
     "freeUntil": "免费保管至 {at}",
     "select": "选择",
@@ -267,7 +272,13 @@
     "videoAt": "开盒录像 {t}",
     "photo": "实物照片（读卡台相机）",
     "noShipments": "暂无发货记录",
-    "shipments": "发货记录"
+    "shipments": "发货记录",
+    "defect": "厂商出厂状态：{note}",
+    "defectHelp": "这是开盒录像中确认的出厂状态。卡片按开盒时的原状归属并寄送（不属于平台补偿范围）。",
+    "incident": {
+      "LOST": "运输途中丢失，正在向运输公司申请赔偿。",
+      "DAMAGED": "运输途中破损，正在向运输公司申请赔偿。"
+    }
   },
   "ship": {
     "title": "申请发货",
@@ -291,13 +302,25 @@
       "SHIPPED": "已发货",
       "DELIVERED": "已送达",
       "RETURNED": "已退回",
-      "CANCELLED": "已取消"
+      "CANCELLED": "已取消",
+      "LOST": "物流事故（丢失）"
     },
     "tracking": "运单号",
     "carrier": "承运商",
     "forced": "因保管期限届满而发货",
     "detail": "发货详情",
-    "compensationCap": "赔付上限 {amount}"
+    "compensationCap": "赔付上限 {amount}",
+    "incident": {
+      "LOST": "运输途中丢失",
+      "DAMAGED": "运输途中破损"
+    },
+    "claimInfo": "正在向运输公司申请赔偿（赔偿上限 {cap}），结果会在本页和邮件中通知。",
+    "claim": {
+      "OPEN": "准备申请",
+      "SUBMITTED": "已向运输公司申请",
+      "PAID": "运输公司已确认赔偿",
+      "REJECTED": "运输公司未认可赔偿，请通过咨询联系我们"
+    }
   },
   "orders": {
     "title": "订单・退款",

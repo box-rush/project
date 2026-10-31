@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { formatJst, formatYen } from "@boxrush/core/format";
-import { and, collectionItems, eq, shipments } from "@boxrush/db";
+import { and, collectionItems, eq, shipmentIncidents, shipments } from "@boxrush/db";
+import { PARAMS } from "@boxrush/core";
 import { getCtx } from "@/lib/ctx";
 import { paymentForShipment } from "@boxrush/services";
 import { StripePay } from "@/components/StripePay";
@@ -21,6 +22,7 @@ export default async function ShipmentDetail({ params }: { params: Promise<{ loc
   const [s] = await ctx.db.select().from(shipments).where(and(eq(shipments.id, id), eq(shipments.userId, user.id)));
   if (!s) notFound();
   const items = await ctx.db.select().from(collectionItems).where(eq(collectionItems.shipmentId, id));
+  const [incident] = await ctx.db.select().from(shipmentIncidents).where(eq(shipmentIncidents.shipmentId, id));
   const a = s.addressSnapshot as { name: string; postalCode: string; prefecture: string; city: string; line1: string; line2?: string | null };
   const idx = STEPS.indexOf(s.status as (typeof STEPS)[number]);
   // F9.9: the fee is paid here (Stripe). Unpaid requests are released after 30 minutes.
@@ -39,6 +41,13 @@ export default async function ShipmentDetail({ params }: { params: Promise<{ loc
         ))}
       </ol>
       {s.forced && <p className="chip border-warning text-warning">{t("ship.forced")}</p>}
+      {incident && (
+        <div role="status" className="rounded-lg border border-error px-3 py-2 text-sm" data-testid="shipment-incident">
+          <div className="font-semibold text-error">{t(`ship.incident.${incident.kind}`)}</div>
+          <div>{t("ship.claimInfo", { cap: formatYen(s.insured ? PARAMS.insuredCompensationCap : PARAMS.standardCompensationCap) })}</div>
+          <div className="text-xs text-ink-2">{t(`ship.claim.${incident.claimStatus}`)}</div>
+        </div>
+      )}
       {pay?.clientSecret && pk && (
         <Section title={t("ship.payable")}>
           <StripePay publishableKey={pk} clientSecret={pay.clientSecret} returnPath={`/shipments/${s.id}`} />

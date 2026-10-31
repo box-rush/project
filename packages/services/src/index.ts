@@ -28,6 +28,8 @@ export * from "./evidence";
 export * from "./archive";
 export * from "./settings";
 export * from "./devices";
+export * from "./content";
+export * from "./documents";
 export * from "./worker";
 export * from "./runtime";
 export * from "./adapters/payments";

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "@playwright/test";
 
 /**
@@ -28,7 +29,7 @@ export default defineConfig({
           reuseExistingServer: true,
           timeout: 120_000,
           // approval commits the seed (T11): the admin app reaches the seed vault through the rng login, as in infra/stack.ts
-          env: { PAYMENT_PROVIDER: "mock", RNG_SEED_KEY: "00".repeat(32), RNG_DATABASE_URL: process.env.RNG_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" },
+          env: { PAYMENT_PROVIDER: "mock", DOCUMENTS_DIR: resolve(".data/e2e-documents"), RNG_SEED_KEY: "00".repeat(32), RNG_DATABASE_URL: process.env.RNG_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" },
         },
       ],
 });

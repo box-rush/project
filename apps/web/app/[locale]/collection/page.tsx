@@ -20,7 +20,8 @@ export default async function CollectionPage({ params, searchParams }: { params:
   const sp = await searchParams;
   const tab = TABS.includes(sp.tab as never) ? (sp.tab as (typeof TABS)[number]) : "STORED";
   const rows = await userCollection(getCtx(), user.id);
-  const list = rows.filter((r) => r.item.state === tab);
+  // X12: a lost parcel stays visible next to the parcels in transit (the card detail explains the claim)
+  const list = rows.filter((r) => r.item.state === tab || (tab === "SHIPPING" && r.item.state === "LOST"));
   const items = list.map((r) => ({
     id: r.item.id,
     name: r.item.name,

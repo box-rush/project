@@ -1,5 +1,5 @@
 import { PARAMS, addHours, addMinutes, buildNumberIndex, formatJst, formatYen, normalizeCardInput } from "@boxrush/core";
-import { and, asc, eq, inArray, inventoryUnits, lotteries, openedCards, openingMarkers, openingSessions, orders, slots, sql, videoSegments, type DbOrTx } from "@boxrush/db";
+import { and, asc, eq, inArray, inventoryUnits, isNull, lotteries, openedCards, openingMarkers, openingSessions, orders, slots, sql, subjectReplacements, videoSegments, type DbOrTx } from "@boxrush/db";
 import { audit, SYSTEM, type Actor } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
@@ -173,6 +173,64 @@ export async function abortForSealAnomaly(ctx: Ctx, p: StaffPrincipal, lotteryId
   // X4 applies before opening, once the draw is published (READY)
   if ((await getLottery(ctx.db, lotteryId)).status !== "READY") fail("NOT_READY");
   await abortLottery(ctx, staffActor(p), lotteryId, "SEAL_ANOMALY");
+}
+
+/**
+ * X4: the seal of a subject box is broken before opening. If another inspected box of the same product and the same
+ * lot is in stock, it replaces the broken one and the swap is published (from / to label, lot, reason, photos);
+ * otherwise the only path is abortForSealAnomaly. The draw is unaffected: it assigns card numbers, not boxes.
+ */
+export async function replaceSubjectUnit(ctx: Ctx, p: StaffPrincipal, lotteryId: string, input: { fromUnitId: string; toUnitId: string; reason: string; photoUrls: string[] }) {
+  requireRole(p, "STATION", "REVIEWER");
+  const reason = input.reason.trim();
+  const photos = input.photoUrls.map((u) => u.trim()).filter((u) => /^(https:\/\/|\/)/.test(u));
+  if (!reason) fail("REASON_REQUIRED");
+  if (!photos.length) fail("PHOTO_REQUIRED");
+  const now = ctx.now();
+  await ctx.db.transaction(async (tx) => {
+    const lot = await lockLottery(tx, lotteryId);
+    if (lot.status !== "READY") fail("NOT_READY");
+    const units = await tx.select().from(inventoryUnits).where(inArray(inventoryUnits.id, [input.fromUnitId, input.toUnitId])).for("update");
+    const from = units.find((u) => u.id === input.fromUnitId);
+    const to = units.find((u) => u.id === input.toUnitId);
+    if (!from || from.lotteryId !== lotteryId || from.kind !== "SEALED" || from.status !== "ALLOCATED") fail("NOT_SUBJECT_UNIT");
+    if (!to || to.kind !== "SEALED" || to.status !== "IN_STOCK" || to.lotteryId || !to.inspectedAt || to.rejectReason) fail("REPLACEMENT_NOT_AVAILABLE");
+    if (to.productId !== from.productId || to.merchantId !== from.merchantId || !from.lot || to.lot !== from.lot) fail("REPLACEMENT_NOT_SAME_LOT");
+    await tx.update(inventoryUnits).set({ status: "REJECTED", rejectReason: `X4: ${reason}` }).where(eq(inventoryUnits.id, from.id));
+    await tx.update(inventoryUnits).set({ status: "ALLOCATED", lotteryId }).where(eq(inventoryUnits.id, to.id));
+    await tx.insert(subjectReplacements).values({ lotteryId, fromUnitId: from.id, toUnitId: to.id, fromLabel: from.label, toLabel: to.label, lot: from.lot, reason, photoUrls: photos, replacedBy: p.id, replacedAt: now });
+    await audit(tx, staffActor(p), "opening.replace_subject", "lottery", lotteryId, { from: from.label, to: to.label, lot: from.lot, reason }, now);
+  });
+}
+
+/** Boxes that may replace a subject box (X4): inspected, in stock, same product, merchant and lot. */
+export async function replacementCandidates(ctx: Ctx, lotteryId: string) {
+  const subject = await ctx.db
+    .select()
+    .from(inventoryUnits)
+    .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
+  const out: { from: { id: string; label: string; lot: string | null }; candidates: { id: string; label: string }[] }[] = [];
+  for (const u of subject) {
+    const candidates = u.lot
+      ? await ctx.db
+          .select({ id: inventoryUnits.id, label: inventoryUnits.label })
+          .from(inventoryUnits)
+          .where(
+            and(
+              eq(inventoryUnits.kind, "SEALED"),
+              eq(inventoryUnits.status, "IN_STOCK"),
+              isNull(inventoryUnits.lotteryId),
+              isNull(inventoryUnits.rejectReason),
+              eq(inventoryUnits.productId, u.productId!),
+              eq(inventoryUnits.merchantId, u.merchantId),
+              eq(inventoryUnits.lot, u.lot),
+            ),
+          )
+          .orderBy(asc(inventoryUnits.label))
+      : [];
+    out.push({ from: { id: u.id, label: u.label, lot: u.lot }, candidates });
+  }
+  return out;
 }
 
 /** X6: publish delay reason and new time (does not move the 24h grace, which counts from the promise). */
