@@ -21,8 +21,10 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 
 ## Deploy from GitHub Actions (no local tools, no AWS keys)
 `.github/workflows/deploy.yml` (Actions → deploy → Run workflow) assumes an IAM role through GitHub OIDC and runs:
-one-time random secrets (marker `/boxrush/<stage>/secrets-initialized` in SSM, so `PseudonymKey` is never replaced) →
-`sst deploy` → `Migrate` → `DbRoles` → `Seed` (test mode) → health check → recent logs. `status` prints logs and
+one-time random secrets (each checked on its own; marker `/boxrush/<stage>/secrets-initialized` in SSM, so
+`PseudonymKey` is never replaced) → on an already deployed stage `sst deploy --target Migrate` + the `Migrate` task
+**before** the services roll out (new code never meets the old schema) → `sst deploy` → `Migrate` → `DbRoles` →
+`Seed` (test mode) → marker `/boxrush/<stage>/deployed` → health check → recent logs. `status` prints logs and
 alarms; `remove` deletes the stage (type the stage name in `confirm`).
 
 One-time setup:
@@ -71,7 +73,10 @@ A step-by-step guide in Chinese (account setup, IAM Identity Center, domains, ex
    so the station network must be inside `ADMIN_ALLOWED_CIDRS`. Revoke a lost device's token on the same page.
 9. Smoke: `E2E_BASE_URL=https://<domain> npx playwright test tests/e2e/consumer.spec.ts -g verification`.
 
-Every later deploy: `npx sst deploy --stage <stage>`, then step 4 if `packages/db/migrations` changed.
+Every later deploy: if `packages/db/migrations` changed, migrate first —
+`npx sst deploy --stage <stage> --target Migrate`, then step 4 — and then `npx sst deploy --stage <stage>`.
+(Write migrations so the code still running keeps working on the new schema: add first, remove or rename only in a
+later release.)
 Index migrations run inside a transaction and briefly block writes to the table; on the ~1M-row test dataset 0011
 took 4 s in total. Once tables are large in production, add indexes with `CREATE INDEX CONCURRENTLY` in a
 migration of their own (outside a transaction) instead.
@@ -96,10 +101,6 @@ the database fails or the oldest due job is more than 5 minutes late).
 
 
 ## Known gaps (not yet in this stack)
-- **Migrations run after the rollout**: `sst deploy` replaces the services, then the workflow runs `Migrate`. When a
-  deploy adds migrations, new code meets the old schema for a few minutes (they only add tables / columns, so old
-  code on the new schema is fine). Before production: build and run `Migrate` first (e.g. `sst deploy --target Migrate`,
-  then the task, then the full deploy) or migrate from a pre-deploy step.
 - **Separate randomness account (T11, §10.7.3)**: the seed key and randomness service live in the main account here,
   isolated by DB role and KMS key. Moving them to an AWS Organizations member account with an SCP-locked key policy is still to do,
   and so is placing the audit archive bucket in that account.

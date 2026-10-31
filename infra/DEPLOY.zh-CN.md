@@ -66,7 +66,7 @@ aws cloudformation describe-stacks --stack-name boxrush-github-deploy-staging --
 ### 0.3 运行部署
 
 **Actions → deploy → Run workflow**（stage `staging`，action `deploy`）。也可以让 Claude 触发并看日志。
-第一次 30–40 分钟。流程：生成随机密钥（只生成一次）→ `sst deploy` → 数据库迁移 → 数据库登录角色 → 演示数据 → 健康检查。
+第一次 30–40 分钟。流程：生成随机密钥（只生成一次，已有的不会覆盖）→（非首次时先迁移数据库）→ `sst deploy` → 数据库迁移 → 数据库登录角色 → 演示数据 → 健康检查。
 结束后在这次运行的 Summary 里有两个地址：用户端、后台。
 
 测试账号（只在测试模式的演示数据里存在）：
@@ -261,7 +261,16 @@ E2E_BASE_URL=https://stg.boxrush.jp npx playwright test tests/e2e/consumer.spec.
 npx sst deploy --stage staging
 ```
 
-如果 `packages/db/migrations` 有新文件，部署后再执行 8.1。（GitHub Actions 的 deploy 每次都会自动执行 8.1、8.2。）
+如果 `packages/db/migrations` 有新文件，**先迁移再部署**（避免新代码碰到旧表结构）：
+
+```bash
+npx sst deploy --stage staging --target Migrate
+```
+```bash
+npx sst shell --stage staging -- node infra/run-task.mjs Migrate
+```
+
+然后再执行上面的 `npx sst deploy --stage staging`。GitHub Actions 的 deploy 会自动按这个顺序执行，并每次执行 8.1、8.2。
 
 ## 11. production 与 staging 的区别
 

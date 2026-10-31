@@ -14,7 +14,7 @@ on:
         options: [staging]
         default: staging
       action:
-        description: "deploy: build + deploy + migrate (+ seed in test mode) · status: recent logs · remove: delete the stage"
+        description: "deploy: migrate + build + deploy (+ seed in test mode) · status: recent logs · remove: delete the stage"
         type: choice
         options: [deploy, status, remove]
         default: deploy
@@ -81,8 +81,22 @@ jobs:
           done
           aws ssm put-parameter --name "$marker" --type String --value "$(date -u +%FT%TZ)" >/dev/null
 
-      # ⚠️ the services roll out before Migrate runs: new code meets the old schema for a few minutes when a deploy adds
-      # migrations (they only add tables / columns). Acceptable for staging; see infra/README.md Known gaps.
+      # Migrations go first, so new code never meets the old schema: on a stage that is already deployed, update only
+      # the Migrate task (new image) and run it, then roll out the services. On the very first deploy nothing old is
+      # running; the migrations then run right after it (next step).
+      - name: migrate before the rollout
+        if: inputs.action == 'deploy'
+        run: |
+          set -euo pipefail
+          if out=$(aws ssm get-parameter --name "/boxrush/$STAGE/deployed" 2>&1); then
+            pnpm exec sst deploy --stage "$STAGE" --target Migrate
+            pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs Migrate
+          elif grep -q ParameterNotFound <<<"$out"; then
+            echo "first deploy of $STAGE: migrations run after it"
+          else
+            echo "$out"; exit 1
+          fi
+
       - name: sst deploy
         if: inputs.action == 'deploy'
         run: pnpm exec sst deploy --stage "$STAGE"
@@ -94,6 +108,7 @@ jobs:
           pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs Migrate
           pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs DbRoles
           if [ "$BOXRUSH_TEST_MODE" = "1" ]; then pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs Seed; fi
+          aws ssm put-parameter --name "/boxrush/$STAGE/deployed" --type String --overwrite --value "$(date -u +%FT%TZ)" >/dev/null
 
       - name: addresses
         if: inputs.action == 'deploy'
@@ -126,3 +141,4 @@ jobs:
           [ "$CONFIRM" = "$STAGE" ] || { echo "type the stage name in 'confirm' to remove it"; exit 1; }
           pnpm exec sst remove --stage "$STAGE"
           aws ssm delete-parameter --name "/boxrush/$STAGE/secrets-initialized" || true
+          aws ssm delete-parameter --name "/boxrush/$STAGE/deployed" || true
