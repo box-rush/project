@@ -69,7 +69,8 @@
     "you": "You",
     "slot": "Slot #{n}",
     "cards": "Cards: {n}",
-    "jst": "Japan time"
+    "jst": "Japan time",
+    "testModeBanner": "Test environment — payments are simulated and nothing is charged; no SMS is sent, codes are shown on screen."
   },
   "home": {
     "title": "Rounds now opening or on sale",
@@ -514,7 +515,8 @@
     "verifyCode": "Verify",
     "codeSent": "SMS sent",
     "verified": "Verified",
-    "termsAgree": "I agree to the Terms of Use and Privacy Policy and sign up"
+    "termsAgree": "I agree to the Terms of Use and Privacy Policy and sign up",
+    "testModeCode": "Test environment: no SMS is sent. Your code:"
   },
   "errors": {
     "UNEXPECTED": "An error occurred. Please try again after a while.",

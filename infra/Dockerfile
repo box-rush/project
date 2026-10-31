@@ -21,6 +21,9 @@ COPY packages/services/package.json packages/services/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM deps AS build
+# PD16: production images are built with NEXT_PUBLIC_LOCALES=ja (inlined into the bundles at build time)
+ARG NEXT_PUBLIC_LOCALES=ja,zh-Hans,en
+ENV NEXT_PUBLIC_LOCALES=$NEXT_PUBLIC_LOCALES
 COPY . .
 RUN pnpm --filter @boxrush/web build && pnpm --filter @boxrush/admin build
 

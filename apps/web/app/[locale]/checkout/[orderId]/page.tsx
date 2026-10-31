@@ -54,7 +54,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ local
       <RefundPromise saleEndsAt={l.saleEndsAt} />
       {/* UR7: the hold time is stated as a fact, without a pressure countdown */}
       <p className="num text-xs text-ink-2">{t("checkout.hold", { minutes: PARAMS.holdMinutes, at: formatJst(o.heldUntil) })}</p>
-      <CheckoutActions orderId={o.id} mock={mock} clientSecret={pay.clientSecret} publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null} />
+      <CheckoutActions orderId={o.id} mock={mock} clientSecret={pay.clientSecret} publishableKey={process.env.STRIPE_PUBLISHABLE_KEY ?? null} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use server";
 import { cookies } from "next/headers";
-import { changeLimits, completeOnboarding, deleteAccount, deleteAddress, recordTouch, redeemCode, upsertAddress, updatePreferences, removePaymentMethod, startCardSetup, saveConfirmedCard, recordEvent, markNotificationsRead, createTicket, replyTicket, requestShipment, isPhoneOnHold, DomainError } from "@boxrush/services";
+import { changeLimits, completeOnboarding, deleteAccount, deleteAddress, recordTouch, redeemCode, upsertAddress, updatePreferences, removePaymentMethod, startCardSetup, saveConfirmedCard, recordEvent, markNotificationsRead, createTicket, replyTicket, requestShipment, isPhoneOnHold, testModeLatestOtp, DomainError } from "@boxrush/services";
 import { eq, users } from "@boxrush/db";
 import { getCtx } from "@/lib/ctx";
 import { getSessionUser } from "@/lib/session";
@@ -29,6 +29,14 @@ export async function afterAuth(): Promise<ActionResult<{ needsPhone: boolean; n
 }
 
 /** T10: a number recently released by another account is held for 90 days (manual review). */
+/** Staging test mode only (no SMS provider): the code just "sent" to this number, shown on screen. */
+export async function testModeSmsCode(phoneE164: string): Promise<ActionResult<string | null>> {
+  return run(async () => {
+    await me();
+    return testModeLatestOtp(getCtx(), phoneE164);
+  });
+}
+
 export async function checkPhone(phone: string): Promise<ActionResult> {
   return run(async () => {
     await me();

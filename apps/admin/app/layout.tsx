@@ -11,6 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
+  const t = await getTranslations("app");
   return (
     <html lang={locale}>
       <head>
@@ -22,6 +23,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         />
       </head>
       <body>
+        {process.env.BOXRUSH_TEST_MODE === "1" && (
+          <div role="status" data-testid="test-mode-banner" style={{ background: "#d98a00", color: "#000", textAlign: "center", fontSize: 12, padding: "2px 16px" }}>
+            {t("testMode")}
+          </div>
+        )}
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>

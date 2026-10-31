@@ -29,7 +29,7 @@ export default async function PaymentMethodsPage({ params }: { params: Promise<{
           </li>
         ))}
       </ul>
-      <AddCard publishableKey={process.env.PAYMENT_PROVIDER === "stripe" ? (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null) : null} />
+      <AddCard publishableKey={process.env.PAYMENT_PROVIDER === "stripe" ? (process.env.STRIPE_PUBLISHABLE_KEY ?? null) : null} />
     </div>
   );
 }

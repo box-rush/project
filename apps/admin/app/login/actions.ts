@@ -1,7 +1,7 @@
 "use server";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { staffLogin, staffLogout, staffVerifyMfa } from "@boxrush/services";
+import { clientIp, staffLogin, staffLogout, staffVerifyMfa } from "@boxrush/services";
 import { ctx, ENROLL_COOKIE, MFA_COOKIE, STAFF_COOKIE } from "@/lib/session";
 import type { ActionResult } from "@/lib/result";
 
@@ -17,8 +17,8 @@ export async function loginAction(_: ActionResult | null, fd: FormData): Promise
   let res: Awaited<ReturnType<typeof staffLogin>>;
   try {
     const h = await headers();
-    // the ALB appends the real client address; earlier entries are whatever the client sent
-    const client = (h.get("x-forwarded-for") ?? "").split(",").pop()!.trim() || "-";
+    // behind CloudFront: the viewer IP it stamped (trusted with the origin secret); locally the nearest proxy's entry
+    const client = clientIp(h) ?? "-";
     res = await staffLogin(ctx(), email, password, client);
   } catch (e) {
     return { ok: false, code: domainCode(e) };

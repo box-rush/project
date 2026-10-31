@@ -4,21 +4,27 @@
  *   VPC (private subnets + managed NAT) ─ RDS PostgreSQL 16 (Multi-AZ in production)
  *   ECS Fargate cluster:
  *     web     consumer app + public verifier   (ALB, autoscaling)
- *     admin   back office                      (separate ALB; restrict access with ADMIN_ALLOWED_CIDRS)
+ *     admin   back office                      (CloudFront + WAF IP allowlist ADMIN_ALLOWED_CIDRS)
  *     worker  job queue, reconcile, sweeps, hourly audit archive (exactly 1 task)
- *     migrate one-off task (same image as worker) — `infra/README.md`
+ *     tasks   one-off (same image as worker): Migrate, DbRoles, Seed (test mode) — `infra/run-task.mjs`
  *   KMS key for server seeds (T11), S3 Object Lock bucket for the audit archive (T7), SES identity (T5).
  *
  * Monitoring (T17): CloudWatch metric filters + alarms → SNS (infra/monitoring.ts).
  *
  * The services never connect as the RDS master user: the app and the randomness service use the restricted
- * logins from infra/db-login-roles.sql, whose passwords are SST secrets.
+ * logins from packages/db/sql/login-roles.sql (DbRoles task), whose passwords are SST secrets.
  */
 import { monitoring } from "./monitoring";
-import { cdnAndWaf, rdsBackups } from "./security";
+import { cloudfrontOnlyIngress, protectedSite, rdsBackups } from "./security";
 
 const stage = $app.stage;
 const isProd = stage === "production";
+/**
+ * Test mode (staging only): try the product end to end before the external accounts exist. Payments use the built-in
+ * test payment, SMS codes are shown on screen, the seeded demo data and staff are available. Never in production.
+ */
+const testMode = process.env.BOXRUSH_TEST_MODE === "1";
+if (testMode && isProd) throw new Error("BOXRUSH_TEST_MODE must never be set for production");
 
 // ── secrets: `npx sst secret set <Name> <value> --stage <stage>` ───────────────────────────────
 const secret = {
@@ -26,9 +32,9 @@ const secret = {
   PseudonymKey: new sst.Secret("PseudonymKey"),
   DbAppPassword: new sst.Secret("DbAppPassword"),
   DbRngPassword: new sst.Secret("DbRngPassword"),
-  StripeSecretKey: new sst.Secret("StripeSecretKey"),
-  StripeWebhookSecret: new sst.Secret("StripeWebhookSecret"),
-  StripePublishableKey: new sst.Secret("StripePublishableKey"),
+  StripeSecretKey: new sst.Secret("StripeSecretKey", "unset"), // required unless test mode
+  StripeWebhookSecret: new sst.Secret("StripeWebhookSecret", "unset"), // required unless test mode
+  StripePublishableKey: new sst.Secret("StripePublishableKey", "unset"), // required unless test mode
   LineChannelAccessToken: new sst.Secret("LineChannelAccessToken", "unset"),
   TwilioAccountSid: new sst.Secret("TwilioAccountSid", "unset"),
   TwilioAuthToken: new sst.Secret("TwilioAuthToken", "unset"),
@@ -61,6 +67,10 @@ const webHost = domain ?? undefined;
 // the web load balancer is CloudFront's origin, on its own name; people use webHost (CloudFront)
 const webOriginHost = domain ? `origin.${domain}` : undefined;
 const adminHost = domain ? `admin.${domain}` : undefined;
+const adminOriginHost = domain ? `admin-origin.${domain}` : undefined;
+// T18: the back office is reachable only from these networks (office / VPN / station), enforced by its WAF
+const adminAllowedCidrs = (process.env.ADMIN_ALLOWED_CIDRS ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+if ((isProd || testMode) && adminAllowedCidrs.length === 0) throw new Error("ADMIN_ALLOWED_CIDRS is required for production and test mode (T18)");
 
 // ── network & database ──────────────────────────────────────────────────────────────────────────
 const vpc = new sst.aws.Vpc("Vpc", { nat: "managed", bastion: true, az: 2 });
@@ -111,17 +121,33 @@ const documentsBucket = new sst.aws.Bucket("Documents", { versioning: true });
 
 const email = domain ? new sst.aws.Email("Email", { sender: domain, dmarc: "v=DMARC1; p=quarantine; adkim=s; aspf=s;" }) : undefined;
 
+// ── T18 edge: CloudFront + WAF ──────────────────────────────────────────────────────────────────
+// Created before the services: without a custom domain the CloudFront URL is the apps' own base URL (auth origin,
+// links in emails), so the services need it in their environment.
+const { router: webCdn } = protectedSite("Web", { stage, host: webHost, originVerify: secret.OriginVerifySecret.value, ratePerIp: 2000, postRatePerIp: 300 });
+const { router: adminCdn } = protectedSite("Admin", {
+  stage,
+  host: adminHost,
+  originVerify: secret.OriginVerifySecret.value,
+  allowCidrs: adminAllowedCidrs,
+  ratePerIp: 5000, // station devices post recording segments continuously
+  postRatePerIp: 3000,
+});
+const webBaseUrl = webCdn.url;
+
 // ── runtime environment ─────────────────────────────────────────────────────────────────────────
 const common = {
   NODE_ENV: "production",
   AWS_REGION: "ap-northeast-1",
-  WEB_BASE_URL: webHost ? `https://${webHost}` : "http://localhost:3000",
-  PAYMENT_PROVIDER: "stripe",
+  WEB_BASE_URL: webBaseUrl,
+  PAYMENT_PROVIDER: testMode ? "mock" : "stripe",
+  BOXRUSH_TEST_MODE: testMode ? "1" : "0",
+  BOXRUSH_STAGE: stage,
   EMAIL_PROVIDER: email ? "ses" : "console",
   EMAIL_FROM: domain ? `BOXラッシュ <no-reply@${domain}>` : "",
   LINE_PROVIDER: "line",
   // KDDI Message Cast (T10) pending its API spec; Twilio meanwhile
-  SMS_PROVIDER: "twilio",
+  SMS_PROVIDER: testMode ? "console" : "twilio",
   TWILIO_ACCOUNT_SID: secret.TwilioAccountSid.value,
   TWILIO_FROM: secret.TwilioFrom.value,
   AUDIT_ARCHIVE_BUCKET: auditArchive.name,
@@ -160,7 +186,9 @@ const permissions = {
 };
 
 const cluster = new sst.aws.Cluster("Cluster", { vpc });
-const image = (target: string) => ({ context: ".", dockerfile: "infra/Dockerfile", target });
+// PD16: only Japanese is public at launch. Next.js fixes NEXT_PUBLIC_ values when the image is built, so the locale
+// list is a build argument, not a runtime variable.
+const image = (target: string) => ({ context: ".", dockerfile: "infra/Dockerfile", target, args: { NEXT_PUBLIC_LOCALES: isProd ? "ja" : "ja,zh-Hans,en" } });
 
 // ── services ────────────────────────────────────────────────────────────────────────────────────
 const web = new sst.aws.Service("Web", {
@@ -170,14 +198,14 @@ const web = new sst.aws.Service("Web", {
   image: image("web"),
   cpu: "0.5 vCPU",
   memory: "1 GB",
-  scaling: { min: isProd ? 2 : 1, max: isProd ? 8 : 2, cpuUtilization: 60 },
+  // test mode: one task — the mock payment provider keeps pending payments in memory
+  scaling: { min: isProd ? 2 : 1, max: isProd ? 8 : testMode ? 1 : 2, cpuUtilization: 60 },
   permissions: permissions.web,
   environment: {
     ...common,
-    // PD16: only Japanese is public at launch
-    NEXT_PUBLIC_LOCALES: isProd ? "ja" : "ja,zh-Hans,en",
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: secret.StripePublishableKey.value,
-    BETTER_AUTH_URL: webHost ? `https://${webHost}` : "http://localhost:3000",
+    // read on the server and handed to the card form (a NEXT_PUBLIC_ variable would be fixed at image build time)
+    STRIPE_PUBLISHABLE_KEY: secret.StripePublishableKey.value,
+    BETTER_AUTH_URL: webBaseUrl,
     TURNSTILE_SITE_KEY: secret.TurnstileSiteKey.value,
   },
   ssm: {
@@ -196,14 +224,9 @@ const web = new sst.aws.Service("Web", {
       : [{ listen: "80/http", forward: "3000/http" }],
     health: { "3000/http": { path: "/api/health", interval: "15 seconds" } },
   },
-  transform: {
-    // T18: only CloudFront may reach the web load balancer (no bypassing the WAF); the app additionally checks the
-    // x-origin-verify secret before trusting the client IP header
-    loadBalancerSecurityGroup: (args) => {
-      const cf = aws.ec2.getManagedPrefixListOutput({ name: "com.amazonaws.global.cloudfront.origin-facing" });
-      args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, prefixListIds: [cf.id] }));
-    },
-  },
+  // T18: only CloudFront may reach the web load balancer (no bypassing the WAF); the app additionally checks the
+  // x-origin-verify secret before trusting the client IP header
+  transform: { loadBalancerSecurityGroup: cloudfrontOnlyIngress },
 });
 
 const admin = new sst.aws.Service("Admin", {
@@ -216,10 +239,10 @@ const admin = new sst.aws.Service("Admin", {
   scaling: { min: 1, max: 2 },
   permissions: permissions.admin,
   environment: { ...common, ...rngEnv, DOCUMENTS_BUCKET: documentsBucket.name },
-  ssm: { ...commonSecrets, ...rngSecrets },
+  ssm: { ...commonSecrets, ...rngSecrets, ORIGIN_VERIFY_SECRET: sm("ORIGIN_VERIFY_SECRET", secret.OriginVerifySecret.value) },
   loadBalancer: {
-    domain: adminHost,
-    rules: adminHost
+    domain: adminOriginHost,
+    rules: adminOriginHost
       ? [
           { listen: "80/http", redirect: "443/https" },
           { listen: "443/https", forward: "3001/http" },
@@ -227,14 +250,8 @@ const admin = new sst.aws.Service("Admin", {
       : [{ listen: "80/http", forward: "3001/http" }],
     health: { "3001/http": { path: "/api/health" } },
   },
-  transform: {
-    // Staff access only from the office / VPN (T18). Comma separated CIDRs; empty = open (dev only).
-    loadBalancerSecurityGroup: (args) => {
-      const cidrs = (process.env.ADMIN_ALLOWED_CIDRS ?? "").split(",").filter(Boolean);
-      if (isProd && cidrs.length === 0) throw new Error("ADMIN_ALLOWED_CIDRS is required for production (T18)");
-      if (cidrs.length) args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, cidrBlocks: cidrs }));
-    },
-  },
+  // reachable only through its CloudFront (whose WAF holds the IP allowlist)
+  transform: { loadBalancerSecurityGroup: cloudfrontOnlyIngress },
 });
 
 const worker = new sst.aws.Service("Worker", {
@@ -258,20 +275,49 @@ const worker = new sst.aws.Service("Worker", {
   },
 });
 
-// One-off: `npx sst shell --stage <stage> -- node infra/run-migrate.mjs` (see infra/README.md)
+// ── one-off tasks: `npx sst shell --stage <stage> -- node infra/run-task.mjs <Name>` (the deploy workflow runs them) ──
+// They run as the RDS master user, inside the VPC, with credentials from Secrets Manager — no tunnel, no psql.
+const ownerSecret = sm("OWNER_DATABASE_URL", ownerDbUrl);
+const taskLogs = (name: string) => ({ name: `/boxrush/${stage}/task-${name}`, retention: "1 month" as const });
+// migrations, after every deploy that adds files to packages/db/migrations
 new sst.aws.Task("Migrate", {
   cluster,
   image: image("worker"),
+  logging: taskLogs("migrate"),
   command: ["packages/db/node_modules/.bin/tsx", "packages/db/src/migrate.ts"],
-  ssm: { DATABASE_URL: sm("OWNER_DATABASE_URL", ownerDbUrl) },
+  ssm: { DATABASE_URL: ownerSecret },
 });
+// the restricted logins the services connect with (packages/db/sql/login-roles.sql); idempotent
+new sst.aws.Task("DbRoles", {
+  cluster,
+  image: image("worker"),
+  logging: taskLogs("dbroles"),
+  command: ["packages/db/node_modules/.bin/tsx", "packages/db/src/loginRoles.ts"],
+  ssm: {
+    DATABASE_URL: ownerSecret,
+    APP_DB_PASSWORD: sm("APP_DB_PASSWORD", secret.DbAppPassword.value),
+    RNG_DB_PASSWORD: sm("RNG_DB_PASSWORD", secret.DbRngPassword.value),
+  },
+});
+// test mode only: demo data and test staff; server seeds under this stage's KMS key so the worker can draw them
+if (testMode)
+  new sst.aws.Task("Seed", {
+    cluster,
+    image: image("worker"),
+    logging: taskLogs("seed"),
+    command: ["packages/services/node_modules/.bin/tsx", "packages/services/src/seed.ts"],
+    environment: { ...common, ...rngEnv },
+    ssm: { DATABASE_URL: ownerSecret, PSEUDONYM_KEY: commonSecrets.PSEUDONYM_KEY },
+    permissions: [{ actions: ["kms:Encrypt", "kms:Decrypt"], resources: [seedKey.arn] }],
+  });
 
-// T18: CloudFront + WAF in front of the web app; production backups copied to Osaka
-const { router: webCdn } = cdnAndWaf({ stage, isProd, webHost, originUrl: web.url, originVerify: secret.OriginVerifySecret.value });
+// T18: CloudFront + WAF in front of both apps (created above, routed here); production backups copied to Osaka
+webCdn.route("/", web.url, { readTimeout: "60 seconds" });
+adminCdn.route("/", admin.url, { readTimeout: "60 seconds" });
 if (isProd) rdsBackups({ stage, dbArn: db.nodes.instance!.arn });
 
 // T17: log metric filters, alarms and the SNS topic they notify
 const { alertTopic } = monitoring({ stage, isProd, db, web, admin, worker });
 
 // printed by `sst deploy`: the consumer site (and public verifier) and the back office
-export const outputs = { web: webCdn.url, webOrigin: web.url, admin: admin.url, seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };
+export const outputs = { web: webCdn.url, admin: adminCdn.url, seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };

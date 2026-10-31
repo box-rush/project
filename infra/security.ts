@@ -5,26 +5,37 @@
  *  - A viewer-request function stamps the viewer IP (`x-boxrush-client-ip`) and a shared secret (`x-origin-verify`)
  *    on every request; the app trusts the IP only with the secret (services/src/clientIp.ts), and the load balancer
  *    accepts traffic only from CloudFront's origin-facing addresses.
+ *  - The back office goes through the same path with an IP allowlist in the WAF (office / VPN / station network), so it
+ *    has HTTPS even without a custom domain.
  *  - AWS Backup: daily RDS backups kept 35 days, each copied to Osaka (ap-northeast-3) — production only.
  */
-export function cdnAndWaf(p: { stage: string; isProd: boolean; webHost: string | undefined; originUrl: $util.Input<string>; originVerify: $util.Input<string> }) {
-  const usEast1 = new aws.Provider("UsEast1", { region: "us-east-1" }); // CloudFront-scope WAF lives in us-east-1
-  const managed = (name: string, priority: number, overrides: string[] = []) => ({
-    name,
+let usEast1: aws.Provider | undefined;
+const cloudfrontRegion = () => (usEast1 ??= new aws.Provider("UsEast1", { region: "us-east-1" })); // CloudFront-scope WAF lives in us-east-1
+
+/**
+ * A site served through CloudFront + WAF (route it with `router.route("/", service.url, …)`). `allowCidrs` turns it into an allowlist (the back office: office / VPN /
+ * station network only); without it the site is public and only the managed rules and rate limits apply.
+ */
+export function protectedSite(
+  name: string,
+  p: { stage: string; host: string | undefined; originVerify: $util.Input<string>; allowCidrs?: string[]; ratePerIp: number; postRatePerIp: number },
+) {
+  const managed = (rule: string, priority: number, overrides: string[] = []) => ({
+    name: rule,
     priority,
     overrideAction: { none: {} },
     statement: {
       managedRuleGroupStatement: {
         vendorName: "AWS",
-        name,
+        name: rule,
         // count-only for rules our own traffic can trip (e.g. large request bodies), block for the rest
         ruleActionOverrides: overrides.map((r) => ({ name: r, actionToUse: { count: {} } })),
       },
     },
-    visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: name },
+    visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: `${name}-${rule}` },
   });
-  const rate = (name: string, priority: number, limit: number, postOnly: boolean) => ({
-    name,
+  const rate = (rule: string, priority: number, limit: number, postOnly: boolean) => ({
+    name: rule,
     priority,
     action: { block: {} },
     statement: {
@@ -34,29 +45,44 @@ export function cdnAndWaf(p: { stage: string; isProd: boolean; webHost: string |
         ...(postOnly ? { scopeDownStatement: { byteMatchStatement: { fieldToMatch: { method: {} }, positionalConstraint: "EXACTLY", searchString: "POST", textTransformations: [{ priority: 0, type: "NONE" }] } } } : {}),
       },
     },
-    visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: name },
+    visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: `${name}-${rule}` },
   });
+  const allow = p.allowCidrs?.length
+    ? new aws.wafv2.IpSet(`${name}AllowIps`, { name: `boxrush-${p.stage}-${name.toLowerCase()}-allow`, scope: "CLOUDFRONT", ipAddressVersion: "IPV4", addresses: p.allowCidrs }, { provider: cloudfrontRegion() })
+    : undefined;
   const acl = new aws.wafv2.WebAcl(
-    "WebAcl",
+    `${name}Acl`,
     {
-      name: `boxrush-${p.stage}-web`,
+      name: `boxrush-${p.stage}-${name.toLowerCase()}`,
       scope: "CLOUDFRONT",
-      defaultAction: { allow: {} },
+      // allowlisted site: everything not in the IP set is blocked
+      defaultAction: allow ? { block: {} } : { allow: {} },
       rules: [
         managed("AWSManagedRulesAmazonIpReputationList", 0),
         managed("AWSManagedRulesCommonRuleSet", 1, ["SizeRestrictions_BODY"]),
         managed("AWSManagedRulesKnownBadInputsRuleSet", 2),
         // everything: generous for people, stops floods; POST (server actions: hold, pay, sign-in): tight
-        rate("RatePerIp", 10, 2000, false),
-        rate("PostRatePerIp", 11, 300, true),
+        rate("RatePerIp", 10, p.ratePerIp, false),
+        rate("PostRatePerIp", 11, p.postRatePerIp, true),
+        ...(allow
+          ? [
+              {
+                name: "AllowListed",
+                priority: 20,
+                action: { allow: {} },
+                statement: { ipSetReferenceStatement: { arn: allow.arn } },
+                visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: `${name}-AllowListed` },
+              },
+            ]
+          : []),
       ],
-      visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: `boxrush-${p.stage}-web` },
+      visibilityConfig: { cloudwatchMetricsEnabled: true, sampledRequestsEnabled: true, metricName: `boxrush-${p.stage}-${name.toLowerCase()}` },
     },
-    { provider: usEast1 },
+    { provider: cloudfrontRegion() },
   );
 
-  const router = new sst.aws.Router("WebCdn", {
-    domain: p.webHost,
+  const router = new sst.aws.Router(`${name}Cdn`, {
+    domain: p.host,
     edge: {
       viewerRequest: {
         // overwrite whatever the client sent: the IP CloudFront saw, and proof the request came through CloudFront
@@ -70,8 +96,16 @@ event.request.headers["x-origin-verify"] = { value: "${p.originVerify}" };`,
       },
     },
   });
-  router.route("/", p.originUrl, { readTimeout: "30 seconds" });
+  // the caller routes "/" to its service once that exists: the service needs this router's URL first (its own base
+  // URL when there is no custom domain), so the router is created before the service it fronts
   return { router, acl };
+}
+
+/** The load balancer behind a protected site accepts only CloudFront's origin-facing addresses. */
+export function cloudfrontOnlyIngress(args: aws.ec2.SecurityGroupArgs): undefined {
+  const cf = aws.ec2.getManagedPrefixListOutput({ name: "com.amazonaws.global.cloudfront.origin-facing" });
+  args.ingress = [80, 443].map((port) => ({ protocol: "tcp", fromPort: port, toPort: port, prefixListIds: [cf.id] }));
+  return undefined;
 }
 
 /** Production backups: AWS Backup daily, 35 days, each recovery point copied to Osaka. */

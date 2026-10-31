@@ -9,7 +9,8 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 | VPC, 2 AZ, managed NAT, bastion | private subnets for RDS and Fargate |
 | RDS PostgreSQL 16 | Multi-AZ, 35-day backups and deletion protection in production |
 | ECS Fargate: `Web`, `Admin`, `Worker` | images from `infra/Dockerfile` (targets `web`, `admin`, `worker`); Worker is exactly 1 task |
-| ECS task `Migrate` | worker image, runs migrations as the RDS owner |
+| ECS tasks `Migrate`, `DbRoles`, `Seed` | worker image, as the RDS owner: migrations; the restricted DB logins (`packages/db/sql/login-roles.sql`); demo data (test mode only). `node infra/run-task.mjs <Name>` |
+| CloudFront `AdminCdn` + WAF `boxrush-<stage>-admin` | the back office: IP allowlist `ADMIN_ALLOWED_CIDRS` in the WAF, HTTPS even without a domain |
 | KMS key `SeedKey` | server-seed encryption (T11); only the services' task role may use it |
 | S3 `AuditArchive` | Object Lock compliance mode (10 years in production) for the hourly audit export (T7) |
 | CloudFront `WebCdn` + WAF `boxrush-<stage>-web` (us-east-1) | public entry for the web app (T18): AWS managed rules, 2,000 req / 5 min and 300 POST / 5 min per IP; CDN for static assets and frozen records; the web load balancer accepts only CloudFront (`origin.<domain>`) |
@@ -18,7 +19,27 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 | S3 `Documents` | private, versioned; merchants' purchase proofs (F16.3), written and read only by `Admin` (`DOCUMENTS_BUCKET`) |
 | SES identity | when `BOXRUSH_DOMAIN` is set; SPF / DKIM / DMARC records via SST (T5, P15) |
 
-## First deploy of a stage
+## Deploy from GitHub Actions (no local tools, no AWS keys)
+`.github/workflows/deploy.yml` (Actions → deploy → Run workflow) assumes an IAM role through GitHub OIDC and runs:
+one-time random secrets (marker `/boxrush/<stage>/secrets-initialized` in SSM, so `PseudonymKey` is never replaced) →
+`sst deploy` → `Migrate` → `DbRoles` → `Seed` (test mode) → health check → recent logs. `status` prints logs and
+alarms; `remove` deletes the stage (type the stage name in `confirm`).
+
+One-time setup:
+1. In the AWS account (CloudShell, Tokyo):
+   `aws cloudformation deploy --template-file infra/bootstrap/github-oidc.yaml --stack-name boxrush-github-deploy-staging --capabilities CAPABILITY_NAMED_IAM`
+   then `aws cloudformation describe-stacks --stack-name boxrush-github-deploy-staging --query 'Stacks[0].Outputs'` for the role ARN.
+2. GitHub → Settings → Environments → `staging` → variables: `AWS_DEPLOY_ROLE_ARN`, `ADMIN_ALLOWED_CIDRS`,
+   `BOXRUSH_TEST_MODE=1` (optional: `ALERT_EMAILS`, `BOXRUSH_DOMAIN`). Restrict the environment to the main branch.
+
+**Test mode** (`BOXRUSH_TEST_MODE=1`, staging only — the stack and the runtime both refuse it on production): payments
+use the built-in mock provider (one web task, pending payments are in memory), SMS codes are shown on the
+phone-verification screen instead of being sent, a banner marks every page, and the `Seed` task loads the demo data and
+staff (`admin@boxrush.local` … / `boxrush-dev`, shared TOTP secret printed by the seed). No Stripe, SMS, Turnstile,
+LINE or domain is needed. Without `BOXRUSH_DOMAIN` both sites are on `*.cloudfront.net` (HTTPS) and e-mail goes to the
+log only.
+
+## First deploy of a stage (from a workstation)
 A step-by-step guide in Chinese (account setup, IAM Identity Center, domains, external services, first admin) is in
 [`DEPLOY.zh-CN.md`](DEPLOY.zh-CN.md).
 
@@ -37,11 +58,8 @@ A step-by-step guide in Chinese (account setup, IAM Identity Center, domains, ex
    task definitions hold only their ARNs.
    `PseudonymKey` must never change for a stage (public pseudonyms would change).
 3. `npx sst deploy --stage staging` — services start but cannot log in to the DB yet.
-4. Migrations: `npx sst shell --stage staging -- node infra/run-migrate.mjs`
-5. Login roles (once, as the RDS owner, through the bastion / `sst tunnel`):
-   ```bash
-   psql "$OWNER_URL" -v app_password="'<DbAppPassword>'" -v rng_password="'<DbRngPassword>'" -f infra/db-login-roles.sql
-   ```
+4. Migrations: `npx sst shell --stage staging -- node infra/run-task.mjs Migrate`
+5. Login roles (idempotent, as the RDS owner, inside the VPC): `npx sst shell --stage staging -- node infra/run-task.mjs DbRoles`.
    The apps connect as `boxrush_app_login`, the randomness service as `boxrush_rng_login`. **Never** point
    `DATABASE_URL` at the owner: that silently removes the T11 / G5 permission domains.
 5b. First admin (once): `BOOTSTRAP_ADMIN_EMAIL=… BOOTSTRAP_ADMIN_PASSWORD=… DATABASE_URL=… pnpm --filter @boxrush/services bootstrap`
@@ -81,8 +99,8 @@ the database fails or the oldest due job is more than 5 minutes late).
 - **Separate randomness account (T11, §10.7.3)**: the seed key and randomness service live in the main account here,
   isolated by DB role and KMS key. Moving them to an AWS Organizations member account with an SCP-locked key policy is still to do,
   and so is placing the audit archive bucket in that account.
-- **Images are built in CI but not yet pushed or run on AWS**: the `images` job builds all three targets, and the
-  layout was checked locally by running the standalone servers and the worker; a first `sst deploy` is still to do.
+- **Not yet deployed to AWS**: the `images` job builds all three targets and the layout was checked locally by
+  running the standalone servers and the worker; the first `sst deploy` (deploy workflow) is still to do.
 - AWS Budgets (P11), RDS Proxy, the AWS Organizations split into production / randomness / audit-archive accounts with
   IAM Identity Center (T18 — an account-level setup, see `infra/DEPLOY.zh-CN.md`).
 - KDDI Message Cast (Twilio is wired meanwhile), Amazon IVS station pipeline (T2), Yamato B2 (T14).

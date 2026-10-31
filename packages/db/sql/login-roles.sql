@@ -1,7 +1,8 @@
--- Run once per environment as the RDS master user, after migrations (see infra/README.md).
+-- Run as the RDS master user after migrations (idempotent; re-running sets the passwords again):
+--   DbRoles task: `npx sst shell --stage <stage> -- node infra/run-task.mjs DbRoles` (packages/db/src/loginRoles.ts)
+--   or by hand:   psql "$MASTER_URL" -v app_password="'...'" -v rng_password="'...'" -f packages/db/sql/login-roles.sql
 -- The applications NEVER connect as the master user: that would bypass the permission domains
 -- (T11 / G5: the app cannot read rng.seed_vault or rewrite the audit log).
---   psql "$MASTER_URL" -v app_password="'...'" -v rng_password="'...'" -f infra/db-login-roles.sql
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'boxrush_app_login') THEN CREATE ROLE boxrush_app_login LOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'boxrush_rng_login') THEN CREATE ROLE boxrush_rng_login LOGIN; END IF;

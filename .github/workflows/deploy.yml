@@ -1,0 +1,123 @@
+name: deploy
+# Manual: Actions → deploy → Run workflow. Credentials: GitHub OIDC → the role from infra/bootstrap/github-oidc.yaml
+# (no AWS keys stored in GitHub). Settings come from the GitHub environment named like the stage:
+#   vars.AWS_DEPLOY_ROLE_ARN   role ARN (CloudFormation output)          required
+#   vars.ADMIN_ALLOWED_CIDRS   IPs allowed to open the back office       required (e.g. 203.0.113.10/32)
+#   vars.BOXRUSH_TEST_MODE     "1": test payments, SMS codes on screen, demo data — no external accounts needed
+#   vars.ALERT_EMAILS          alarm e-mails (optional)
+#   vars.BOXRUSH_DOMAIN        custom domain in Route 53 (optional; default: *.cloudfront.net)
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        type: choice
+        options: [staging]
+        default: staging
+      action:
+        description: "deploy: build + deploy + migrate (+ seed in test mode) · status: recent logs · remove: delete the stage"
+        type: choice
+        options: [deploy, status, remove]
+        default: deploy
+      confirm:
+        description: 'for "remove": type the stage name'
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-${{ inputs.stage }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    timeout-minutes: 120
+    env:
+      STAGE: ${{ inputs.stage }}
+      AWS_REGION: ap-northeast-1
+      BOXRUSH_TEST_MODE: ${{ vars.BOXRUSH_TEST_MODE }}
+      ADMIN_ALLOWED_CIDRS: ${{ vars.ADMIN_ALLOWED_CIDRS }}
+      ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
+      BOXRUSH_DOMAIN: ${{ vars.BOXRUSH_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+          role-duration-seconds: 10800
+      - run: pnpm install --frozen-lockfile
+      - run: aws sts get-caller-identity --query Account --output text
+
+      # Random secrets, generated once per stage. A marker records that they exist, so a later run never replaces them
+      # (PseudonymKey must never change: every public pseudonym would change with it).
+      - name: one-time secrets
+        if: inputs.action == 'deploy'
+        run: |
+          set -euo pipefail
+          marker="/boxrush/$STAGE/secrets-initialized"
+          if out=$(aws ssm get-parameter --name "$marker" 2>&1); then
+            echo "secrets already initialised"
+          elif grep -q ParameterNotFound <<<"$out"; then
+            for s in BetterAuthSecret PseudonymKey DbAppPassword DbRngPassword OriginVerifySecret; do
+              v=$(openssl rand -hex 32); echo "::add-mask::$v"
+              pnpm exec sst secret set "$s" "$v" --stage "$STAGE" >/dev/null
+              echo "generated $s"
+            done
+            aws ssm put-parameter --name "$marker" --type String --value "$(date -u +%FT%TZ)" >/dev/null
+          else
+            echo "$out"; exit 1
+          fi
+
+      - name: sst deploy
+        if: inputs.action == 'deploy'
+        run: pnpm exec sst deploy --stage "$STAGE"
+
+      - name: migrate, database logins, demo data
+        if: inputs.action == 'deploy'
+        run: |
+          set -euo pipefail
+          pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs Migrate
+          pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs DbRoles
+          if [ "$BOXRUSH_TEST_MODE" = "1" ]; then pnpm exec sst shell --stage "$STAGE" -- node infra/run-task.mjs Seed; fi
+
+      - name: addresses
+        if: inputs.action == 'deploy'
+        run: |
+          set -euo pipefail
+          web=$(jq -r .web .sst/outputs.json); admin=$(jq -r .admin .sst/outputs.json)
+          { echo "### $STAGE"; echo "- 用户端 / consumer: $web"; echo "- 后台 / back office: $admin （仅 ADMIN_ALLOWED_CIDRS）"; } >> "$GITHUB_STEP_SUMMARY"
+          echo "web=$web admin=$admin"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$web/api/health" || true)
+            echo "web /api/health → $code"; [ "$code" = "200" ] && exit 0; sleep 20
+          done
+          echo "::warning::web health check did not return 200 yet (services may still be starting)"
+
+      - name: logs
+        if: always() && inputs.action != 'remove'
+        run: |
+          for g in task-migrate task-dbroles task-seed web admin worker; do
+            echo "──── /boxrush/$STAGE/$g"
+            aws logs tail "/boxrush/$STAGE/$g" --since 2h --format short 2>/dev/null | tail -n 60 || true
+          done
+          aws cloudwatch describe-alarms --alarm-name-prefix "boxrush-$STAGE" --state-value ALARM --query 'MetricAlarms[].AlarmName' --output text || true
+
+      - name: sst remove
+        if: inputs.action == 'remove'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = "$STAGE" ] || { echo "type the stage name in 'confirm' to remove it"; exit 1; }
+          pnpm exec sst remove --stage "$STAGE"
+          aws ssm delete-parameter --name "/boxrush/$STAGE/secrets-initialized" || true

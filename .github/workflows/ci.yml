@@ -34,6 +34,13 @@ jobs:
       - run: pnpm --filter @boxrush/admin build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
+      # staging test mode (no external accounts): SMS code on screen, test payment, banner
+      - name: e2e (test mode)
+        run: |
+          cd apps/web
+          BOXRUSH_TEST_MODE=1 BOXRUSH_STAGE=staging BETTER_AUTH_URL=http://localhost:3200 WEB_BASE_URL=http://localhost:3200 RNG_SEED_KEY=$(printf '0%.0s' $(seq 64)) nohup pnpm exec next start -p 3200 > /tmp/testmode.log 2>&1 &
+          for i in $(seq 60); do curl -sf http://localhost:3200/api/health > /dev/null && break; sleep 1; done
+          cd ../.. && E2E_TEST_MODE=1 E2E_BASE_URL=http://localhost:3200 pnpm exec playwright test tests/e2e/testmode.spec.ts
 
   infra:
     runs-on: ubuntu-latest

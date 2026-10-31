@@ -12,6 +12,7 @@ import { routing } from "@/i18n/routing";
 import { CLIENT_NAMESPACES } from "@/i18n/client-namespaces";
 import { Header, BottomTabs } from "@/components/Nav";
 import { LandingBeacon } from "@/components/LandingBeacon";
+import { isTestMode } from "@boxrush/services";
 
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#3B3FD8" };
@@ -32,10 +33,16 @@ export default async function LocaleLayout({ children, params }: { children: Rea
   setRequestLocale(locale);
   const all = await getMessages();
   const clientMessages = Object.fromEntries(CLIENT_NAMESPACES.filter((n) => n in all).map((n) => [n, all[n]]));
+  const tc = await getTranslations("common");
   return (
     <html lang={locale}>
       <body className="min-h-dvh font-sans antialiased">
         <NextIntlClientProvider messages={clientMessages}>
+          {isTestMode() && (
+            <div role="status" data-testid="test-mode-banner" className="bg-warning px-4 py-1 text-center text-xs font-medium text-black">
+              {tc("testModeBanner")}
+            </div>
+          )}
           <Header />
           <main className="mx-auto w-full max-w-[1200px] px-4 pb-28 pt-4 md:px-6 lg:pb-12">{children}</main>
           <BottomTabs />

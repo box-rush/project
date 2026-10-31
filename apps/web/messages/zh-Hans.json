@@ -69,7 +69,8 @@
     "you": "你",
     "slot": "位 #{n}",
     "cards": "{n} 张",
-    "jst": "日本时间"
+    "jst": "日本时间",
+    "testModeBanner": "测试环境 — 支付为测试模式，不会真实扣款；不发送短信，验证码显示在页面上。"
   },
   "home": {
     "title": "开盒中・销售中的场次",
@@ -514,7 +515,8 @@
     "verifyCode": "认证",
     "codeSent": "已发送 SMS",
     "verified": "已认证",
-    "termsAgree": "同意利用规约与隐私政策并注册"
+    "termsAgree": "同意利用规约与隐私政策并注册",
+    "testModeCode": "测试环境：不发送短信。验证码："
   },
   "errors": {
     "UNEXPECTED": "发生错误。请稍后再试。",

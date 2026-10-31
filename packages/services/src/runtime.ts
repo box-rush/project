@@ -1,4 +1,5 @@
 import { createDb } from "@boxrush/db";
+import { assertTestModeAllowed, isTestMode } from "./testMode";
 import { awsClientConfig } from "./adapters/aws";
 import { KMSClient } from "@aws-sdk/client-kms";
 import { KmsKeyProvider, LocalAesKeyProvider, type SeedKeyProvider } from "./adapters/keys";
@@ -12,19 +13,27 @@ import type { EmailSender, LineSender, SmsSender } from "./adapters/messaging";
 
 function required(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`${name} is required for this provider`);
+  // "unset" is the SST secret placeholder for "not configured"
+  if (!v || v === "unset") throw new Error(`${name} is required for this provider`);
   return v;
+}
+
+/** Optional channels (LINE): configured only when the credential is actually set. */
+function isSet(name: string) {
+  const v = process.env[name];
+  return !!v && v !== "unset";
 }
 
 const g = globalThis as unknown as { __boxrushCtx?: Ctx; __boxrushMock?: MockPaymentProvider; __boxrushPools?: { end(): Promise<void> }[] };
 
 /** Shared mock provider so the dev checkout and the webhook simulator see the same payments. */
 export function mockPayments(): MockPaymentProvider {
-  return (g.__boxrushMock ??= new MockPaymentProvider({ crossProcess: process.env.NODE_ENV !== "production" }));
+  // cross-process refunds of mock payments: local dev, and the staging test mode (web, admin and worker are separate tasks)
+  return (g.__boxrushMock ??= new MockPaymentProvider({ crossProcess: process.env.NODE_ENV !== "production" || isTestMode() }));
 }
 
 /** T11: KMS in deployed environments; the local AES key only when no KMS key is configured. */
-function seedKeys(): SeedKeyProvider {
+export function seedKeyProvider(): SeedKeyProvider {
   if (process.env.RNG_KMS_KEY_ID) {
     return new KmsKeyProvider(process.env.RNG_KMS_KEY_ID, new KMSClient(awsClientConfig()));
   }
@@ -46,6 +55,7 @@ function smsSender(console_: SmsSender): SmsSender {
 
 /** Process-wide context built from env (see .env.example). */
 export function createRuntime(): Ctx {
+  assertTestModeAllowed();
   if (g.__boxrushCtx) return g.__boxrushCtx;
   const { db, pool } = createDb(process.env.DATABASE_URL);
   const pools: { end(): Promise<void> }[] = (g.__boxrushPools = [pool]);
@@ -75,12 +85,13 @@ export function createRuntime(): Ctx {
         if (url === undefined) throw new Error("RNG_DATABASE_URL is not configured for this service");
         const rng = createDb(url ?? undefined, { max: 2, applicationName: "boxrush-rng" });
         pools.push(rng.pool);
-        rngService = new RandomnessService(rng.db, seedKeys());
+        rngService = new RandomnessService(rng.db, seedKeyProvider());
       }
       return rngService;
     },
     email: process.env.EMAIL_PROVIDER === "ses" ? new SesEmailSender(required("EMAIL_FROM"), undefined, process.env.SES_CONFIGURATION_SET) : (messaging as EmailSender),
-    line: process.env.LINE_PROVIDER === "line" ? new LineMessagingSender(required("LINE_CHANNEL_ACCESS_TOKEN")) : (messaging as LineSender),
+    // LINE is optional (email is the primary channel): without a token, LINE messages go to the log
+    line: process.env.LINE_PROVIDER === "line" && isSet("LINE_CHANNEL_ACCESS_TOKEN") ? new LineMessagingSender(required("LINE_CHANNEL_ACCESS_TOKEN")) : (messaging as LineSender),
     sms: smsSender(messaging),
     pseudonymKey: process.env.PSEUDONYM_KEY ?? "11".repeat(32),
     webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
@@ -95,3 +106,4 @@ export async function closeRuntime() {
   g.__boxrushPools = [];
   g.__boxrushCtx = undefined;
 }
+

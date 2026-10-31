@@ -1,6 +1,7 @@
 {
   "app": {
-    "title": "BOX Rush Admin"
+    "title": "BOX Rush Admin",
+    "testMode": "Test environment — simulated payments, no SMS, test data only."
   },
   "common": {
     "month": "Month",

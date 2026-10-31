@@ -37,6 +37,7 @@ export * from "./clientIp";
 export * from "./adapters/turnstile";
 export * from "./worker";
 export * from "./runtime";
+export * from "./testMode";
 export * from "./adapters/payments";
 export * from "./adapters/keys";
 export * from "./adapters/messaging";
