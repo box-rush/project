@@ -48,6 +48,24 @@ export async function confirmAttribution(ctx: Ctx, p: StaffPrincipal, cardId: st
 }
 
 /**
+ * X9 / PD6: note a manufacturer defect seen on the recording (print shift, edge whitening …). The card stays attributed
+ * as-is — no platform compensation — and the owner sees the note on the card. Only while attributing; frozen in the record.
+ */
+export async function setDefectNote(ctx: Ctx, p: StaffPrincipal, cardId: string, note: string) {
+  requireRole(p, "ATTRIBUTION");
+  const text = note.trim();
+  if (text.length > 200) fail("INVALID_NOTE");
+  await ctx.db.transaction(async (tx) => {
+    const [card] = await tx.select().from(openedCards).where(eq(openedCards.id, cardId)).for("update");
+    if (!card || card.status === "VOID") fail("NOT_FOUND");
+    const lot = await lockLottery(tx, card.lotteryId);
+    if (lot.status !== "ATTRIBUTING") fail("NOT_ATTRIBUTING");
+    await tx.update(openedCards).set({ defectNote: text || null }).where(eq(openedCards.id, cardId));
+    await audit(tx, staffActor(p), "attribution.defect_note", "opened_card", cardId, { note: text || null });
+  });
+}
+
+/**
  * After-the-fact entry or correction against the recording (T4 "事后补录"): creates a new entry that needs
  * a second person's confirmation; a corrected entry is voided, not deleted.
  */

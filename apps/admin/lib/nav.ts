@@ -4,6 +4,8 @@ export interface NavItem {
   key: string;
   href: string;
   roles: StaffRole[];
+  /** label key when one page code has more than one screen */
+  labelKey?: string;
 }
 export interface NavSection {
   key: string;
@@ -49,6 +51,7 @@ export const NAV: NavSection[] = [
     items: [
       { key: "O14", href: "/ops/tickets", roles: ["CS"] },
       { key: "O15", href: "/ops/arbitration", roles: ["CS"] },
+      { key: "O13", href: "/ops/incidents", roles: ["WAREHOUSE", "CS", "FINANCE"], labelKey: "O13incidents" },
     ],
   },
   {

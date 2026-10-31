@@ -49,3 +49,4 @@ export async function bookIntakeAction(_: ActionResult<unknown> | null, fd: Form
     { revalidate: ["/merchant/intake"], message: "booked" },
   );
 }
+

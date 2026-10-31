@@ -111,6 +111,13 @@ export default async function LotteryPage({ params }: { params: Promise<{ locale
             <div className="num">{t("lottery.newTime", { at: formatJst(d.delay.newOpeningAt) })}</div>
           </Notice>
         )}
+        {d.replacements.map((r) => (
+          <Notice key={`${r.from}-${r.to}`} tone="warning">
+            <div className="font-semibold">{t("lottery.replaced")}</div>
+            <div className="font-mono text-xs">{t("lottery.replacedDetail", { from: r.from, to: r.to, lot: r.lot, at: formatJst(r.at) })}</div>
+            <div>{t("lottery.delayReason", { reason: r.reason })}</div>
+          </Notice>
+        ))}
         {l.status === "ABORTED" || (l.status === "REFUNDED" && l.abortReason) ? (
           <Notice tone="error">{t("lottery.aborted", { reason: t(`lottery.abortReason.${l.abortReason}` as never) })}</Notice>
         ) : null}

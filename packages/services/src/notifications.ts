@@ -26,6 +26,7 @@ export const NOTIFICATION_KINDS = {
   TICKET_REPLY: true,
   ARBITRATION_DECIDED: true, // F11.7
   LATE_PAYMENT_REFUNDED: true,
+  SHIPMENT_INCIDENT: true, // X12
 } as const;
 export type NotificationKind = keyof typeof NOTIFICATION_KINDS;
 
@@ -53,6 +54,7 @@ const T: Record<string, Record<NotificationKind, (p: Params) => [string, string]
     TICKET_REPLY: (p) => [`【BOXラッシュ】お問い合わせ #${p.code} に返信がありました`, `マイページから確認できます。`],
     ARBITRATION_DECIDED: (p) => [`【BOXラッシュ】申し立て #${p.code} の結果`, `${p.resolution}`],
     LATE_PAYMENT_REFUNDED: (p) => [`【BOXラッシュ】お支払いを返金しました`, `お支払いの確認が確保時間（10分）を過ぎ、枠が確保できなかったため ${p.amount} を返金します。`],
+    SHIPMENT_INCIDENT: (p) => [`【BOXラッシュ】発送 #${p.code} の配送事故のお知らせ`, `${p.kind === "LOST" ? "配送中に紛失しました" : "配送中に破損しました"}。運送会社へ補償を請求します（補償上限 ${p.cap}）。進捗はマイページでお知らせします。`],
   },
   "zh-Hans": {
     SOLD_OUT: (p) => [`【BOXラッシュ】${p.title} 已满员`, `抽选结果将在开盒前公示。`],
@@ -75,6 +77,7 @@ const T: Record<string, Record<NotificationKind, (p: Params) => [string, string]
     TICKET_REPLY: (p) => [`【BOXラッシュ】工单 #${p.code} 有新回复`, ``],
     ARBITRATION_DECIDED: (p) => [`【BOXラッシュ】申诉 #${p.code} 结果`, `${p.resolution}`],
     LATE_PAYMENT_REFUNDED: (p) => [`【BOXラッシュ】支付已退回`, `${p.amount}`],
+    SHIPMENT_INCIDENT: (p) => [`【BOXラッシュ】发货 #${p.code} 物流事故通知`, `${p.kind === "LOST" ? "运输途中丢失" : "运输途中破损"}。我们将向运输公司申请赔偿（赔偿上限 ${p.cap}），进展会在我的页面通知。`],
   },
   en: {
     SOLD_OUT: (p) => [`[Box Rush] ${p.title} is full`, `The draw will be published before opening.`],
@@ -97,6 +100,7 @@ const T: Record<string, Record<NotificationKind, (p: Params) => [string, string]
     TICKET_REPLY: (p) => [`[Box Rush] Reply on #${p.code}`, ``],
     ARBITRATION_DECIDED: (p) => [`[Box Rush] Appeal #${p.code} decided`, `${p.resolution}`],
     LATE_PAYMENT_REFUNDED: (p) => [`[Box Rush] Payment refunded`, `${p.amount}`],
+    SHIPMENT_INCIDENT: (p) => [`[Box Rush] Shipping incident on parcel #${p.code}`, `${p.kind === "LOST" ? "The parcel was lost in transit" : "The parcel was damaged in transit"}. We are claiming compensation from the carrier (cap ${p.cap}) and will keep you posted.`],
   },
 };
 

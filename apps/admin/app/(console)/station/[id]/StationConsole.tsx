@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { formatJst, formatVideoTs } from "@boxrush/core/format";
 import { ResultMessage } from "@/components/ResultMessage";
 import type { ActionResult } from "@/lib/result";
+import { ReplaceSubject } from "./ReplaceSubject";
 import { enterCardAction, finishAction, markerAction, recordingAction, sealAnomalyAction, startOpeningAction, voidLastAction, confirmAbortAction } from "../actions";
 
 interface Card {
@@ -32,6 +33,7 @@ export function StationConsole({
   hint,
   subjectUnits,
   checklistSize,
+  replacementOptions,
 }: {
   me: string;
   lottery: { id: string; status: string; openingAt: string; totalSlots: number; abortReason: string | null };
@@ -41,6 +43,7 @@ export function StationConsole({
   hint: string | null;
   subjectUnits: { label: string; photos: number }[];
   checklistSize: number;
+  replacementOptions: { from: { id: string; label: string; lot: string | null }; candidates: { id: string; label: string }[] }[];
 }) {
   const t = useTranslations("station");
   const router = useRouter();
@@ -158,6 +161,7 @@ export function StationConsole({
           >
             {t("sealAnomaly")}
           </button>
+          <ReplaceSubject lotteryId={lottery.id} options={replacementOptions} />
           <ResultMessage result={result} />
         </div>
       </div>
@@ -187,6 +191,7 @@ export function StationConsole({
           <button className="btn btn-danger" disabled={pending} onClick={() => run(() => confirmAbortAction(lottery.id))}>
             {t("confirmAbort")}
           </button>
+          <ResultMessage result={result} />
         </div>
       </div>
     );
@@ -311,7 +316,7 @@ export function StationConsole({
           </button>
           <label className="flex items-center gap-2 text-xs text-ink2">
             {t("tsLabel")} <span className="mono text-ink">{formatVideoTs(ts())}</span>
-            <input className="input mono !min-h-7 !w-28 text-xs" placeholder={t("tsManual")} value={manualTs} onChange={(e) => setManualTs(e.target.value.replace(/[^0-9]/g, ""))} />
+            <input className="input mono !min-h-7 !w-28 text-xs" aria-label={t("tsManual")} placeholder={t("tsManual")} value={manualTs} onChange={(e) => setManualTs(e.target.value.replace(/[^0-9]/g, ""))} />
           </label>
 
           <div className="min-h-[96px] rounded-lg border border-line p-3" aria-live="polite" data-testid="entry-result">
@@ -333,8 +338,8 @@ export function StationConsole({
                   {t("retype")}
                 </button>
                 <div className="grid grid-cols-[1fr_90px] gap-2">
-                  <input className="input" placeholder={t("offName")} value={offName} onChange={(e) => setOffName(e.target.value)} />
-                  <input className="input mono" placeholder={t("offRarity")} value={offRarity} onChange={(e) => setOffRarity(e.target.value)} />
+                  <input className="input" aria-label={t("offName")} placeholder={t("offName")} value={offName} onChange={(e) => setOffName(e.target.value)} />
+                  <input className="input mono" aria-label={t("offRarity")} placeholder={t("offRarity")} value={offRarity} onChange={(e) => setOffRarity(e.target.value)} />
                 </div>
                 <button className="btn btn-warning" disabled={pending || !offName.trim() || !offRarity.trim()} onClick={() => submitCard({ name: offName.trim(), rarity: offRarity.trim() })}>
                   {t("registerOffList")}

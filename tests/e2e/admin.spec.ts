@@ -5,7 +5,7 @@ const ADMIN = process.env.E2E_ADMIN_URL ?? "http://localhost:3101";
 const PAGES = [
   "/merchant/lotteries", "/merchant/lotteries/new", "/merchant/intake", "/ops/dashboard", "/ops/review", "/ops/schedule", "/ops/pricing",
   "/ops/products", "/ops/checklists", "/ops/banners", "/ops/coupons", "/station", "/ops/attribution", "/ops/warehouse", "/ops/intake",
-  "/ops/inventory", "/ops/procurement", "/ops/tickets", "/ops/arbitration", "/ops/finance", "/ops/risk", "/ops/audit", "/ops/monitoring",
+  "/ops/inventory", "/ops/procurement", "/ops/tickets", "/ops/arbitration", "/ops/finance", "/ops/risk", "/ops/audit", "/ops/monitoring", "/ops/incidents", "/ops/tickets/faqs",
 ];
 
 test("staff login requires TOTP; every back-office page renders for admin, none offers a draw trigger or video upload", async ({ page }) => {
@@ -40,4 +40,39 @@ test("staff login requires TOTP; every back-office page renders for admin, none 
   const body = await res.json();
   expect(body.packHash).toMatch(/^[0-9a-f]{64}$/);
   expect(body.pack.auditTrail.length).toBeGreaterThan(0);
+});
+
+test("X7: admin switches the unconfirmed-report policy on the monitoring page; the change is stored and audited", async ({ page }) => {
+  await page.goto(`${ADMIN}/ops/monitoring`);
+  if (new URL(page.url()).pathname.startsWith("/login")) {
+    await page.getByLabel("メールアドレス").fill("admin@boxrush.local");
+    await page.getByLabel("パスワード").fill("boxrush-dev");
+    await page.getByRole("button", { name: "次へ" }).click();
+    await page.getByLabel("認証コード（6桁）").fill(totp("JBSWY3DPEHPK3PXP", new Date()));
+    await page.getByRole("button", { name: "ログイン" }).click();
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+    await page.goto(`${ADMIN}/ops/monitoring`);
+  }
+  const pg = await import("pg");
+  const c = new pg.default.Client({ connectionString: process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" });
+  await c.connect();
+  const setting = async () => (await c.query("SELECT value FROM platform_settings WHERE key = 'recordingLossUnconfirmed'")).rows[0]?.value;
+  const save = async (label: string) => {
+    await page.getByLabel(label).check();
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("保存しました")).toBeVisible();
+  };
+  try {
+    await expect(page.getByLabel("24時間後に自動で中止・全額返金")).toBeChecked(); // default
+    await save("警告のみ（自動では中止しない）");
+    expect(await setting()).toBe("ALERT_ONLY");
+    await page.reload();
+    await expect(page.getByLabel("警告のみ（自動では中止しない）")).toBeChecked();
+    const { rows } = await c.query("SELECT actor_type, entity_id, data FROM audit_log WHERE action = 'settings.update' ORDER BY seq DESC LIMIT 1");
+    expect(rows[0]).toMatchObject({ actor_type: "STAFF", entity_id: "recordingLossUnconfirmed", data: { from: "AUTO_ABORT_24H", to: "ALERT_ONLY" } });
+  } finally {
+    await save("24時間後に自動で中止・全額返金").catch(() => {});
+    expect(await setting()).toBe("AUTO_ABORT_24H");
+    await c.end();
+  }
 });

@@ -72,6 +72,11 @@ export default async function ResultPage({ params, searchParams }: { params: Pro
                     {/* gold only for SR+ revealed cards (§9.7 #16) */}
                     <span className={`chip ${isSrOrAbove(c.rarity) ? "border-gold text-gold font-bold" : ""}`}>{c.rarity}</span>
                     {c.offList && <span className="chip ml-1">{t("result.offList")}</span>}
+                    {"defect" in c && c.defect ? (
+                      <span className="chip ml-1 border-warning text-warning" title={t("result.defectHelp")}>
+                        {t("result.defect", { note: String(c.defect) })}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="p-2 font-mono text-xs">
                     #{String(c.slot).padStart(2, "0")} {pub.get(c.slot!)}

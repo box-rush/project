@@ -28,9 +28,14 @@ and the KMS key is `RNG_SEED_KEY`. Production sets `PAYMENT_PROVIDER=stripe`, re
 ## Tests
 ```bash
 pnpm check                      # UR lint, i18n parity, typecheck, core + PostgreSQL integration tests
-pnpm --filter @boxrush/web build && pnpm e2e    # Playwright main-flow smoke
+pnpm db:reset && pnpm --filter @boxrush/web --filter @boxrush/admin build && pnpm e2e    # Playwright functional tests
 python3 apps/web/public/bx_shuffle_v1.py record.json   # offline verifier for a public record (/api/records/L0001)
 ```
+The E2E suite (`tests/e2e`) drives the real UIs against a freshly seeded DB and starts its own worker:
+`lifecycle` runs the whole chain (intake → wizard → review → sale → draw → station with device segments →
+two-person attribution → shipping → COMPLETED), `exceptions` covers X4 / X6 / X7 and review rejection,
+`consumer-functions` covers limits, codes, appeals → arbitration, leaving, settings and the info pages.
+Exception tests start from `packages/services/src/e2eFixture.ts` (a READY lottery opening in minutes; dev only).
 
 ## What is enforced where
 | Invariant | Enforcement |

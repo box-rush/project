@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { formatJst, formatVideoTs } from "@boxrush/core/format";
 import { isSrOrAbove } from "@boxrush/core";
-import { and, collectionItems, eq, lotteries } from "@boxrush/db";
+import { and, collectionItems, eq, lotteries, openedCards, shipmentIncidents } from "@boxrush/db";
 import { getCtx } from "@/lib/ctx";
 import { requireUser } from "@/lib/guard";
 import { Link } from "@/i18n/routing";
@@ -17,9 +17,11 @@ export default async function CardDetail({ params }: { params: Promise<{ locale:
   const user = await requireUser();
   const t = await getTranslations();
   const [row] = await getCtx()
-    .db.select({ i: collectionItems, title: lotteries.title, code: lotteries.code })
+    .db.select({ i: collectionItems, title: lotteries.title, code: lotteries.code, defect: openedCards.defectNote, incident: shipmentIncidents.kind })
     .from(collectionItems)
     .innerJoin(lotteries, eq(lotteries.id, collectionItems.lotteryId))
+    .leftJoin(openedCards, eq(openedCards.id, collectionItems.openedCardId))
+    .leftJoin(shipmentIncidents, eq(shipmentIncidents.shipmentId, collectionItems.shipmentId))
     .where(and(eq(collectionItems.id, itemId), eq(collectionItems.userId, user.id)));
   if (!row) notFound();
   const code = `L${String(row.code).padStart(4, "0")}`;
@@ -33,6 +35,13 @@ export default async function CardDetail({ params }: { params: Promise<{ locale:
           <span className={`chip ${isSrOrAbove(row.i.rarity) ? "border-gold text-gold font-bold" : ""}`}>{row.i.rarity}</span>
           <span className="chip">{t(`collection.tabs.${row.i.state}`)}</span>
         </div>
+        {row.defect && (
+          <div className="rounded-lg border border-warning px-3 py-2 text-sm" data-testid="defect-note">
+            <div className="font-semibold text-warning">{t("collection.defect", { note: row.defect })}</div>
+            <div className="text-xs text-ink-2">{t("collection.defectHelp")}</div>
+          </div>
+        )}
+        {row.incident && <p className="text-sm font-semibold text-error">{t(`collection.incident.${row.incident}`)}</p>}
         <p className="text-sm">{t("collection.fromLottery", { title: row.title, slot: String(row.i.slotNumber).padStart(2, "0") })}</p>
         {row.i.state === "STORED" && <p className="num text-sm text-ink-2">{t("collection.freeUntil", { at: formatJst(row.i.freeStorageUntil) })}</p>}
         <p className="text-xs text-ink-2">{t("collection.photo")}</p>

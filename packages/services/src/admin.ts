@@ -18,6 +18,7 @@ import {
   products,
   shipments,
   sql,
+  subjectReplacements,
   staff,
   users,
   voucherCodes,
@@ -26,7 +27,7 @@ import { audit, verifyAuditChain } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
 import { getLottery, validateDraft } from "./lotteries";
-import { stationView } from "./opening";
+import { replacementCandidates, stationView } from "./opening";
 import { requireRole, staffActor, type StaffPrincipal } from "./principals";
 import { markDelivered } from "./warehouse";
 import { reconcile } from "./worker";
@@ -151,8 +152,9 @@ export async function stationLotteries(ctx: Ctx, p: StaffPrincipal) {
 
 /** Station view plus the keypad hint of the subject product (T4) and seal photos from intake. */
 export async function stationDetail(ctx: Ctx, p: StaffPrincipal, lotteryId: string) {
-  requireRole(p, "STATION");
+  requireRole(p, "STATION", "REVIEWER"); // a reviewer may be the second person who confirms an X7 abort
   const view = await stationView(ctx, lotteryId);
+  const swaps = await ctx.db.select().from(subjectReplacements).where(eq(subjectReplacements.lotteryId, lotteryId)).orderBy(asc(subjectReplacements.replacedAt));
   const snap = view.lottery.snapshot as { subject?: { productId: string }[]; subjectUnits?: { label: string; sealPhotoUrls: string[] }[]; checklist?: unknown[] } | null;
   const productIds = (snap?.subject ?? []).map((s) => s.productId);
   const prods = productIds.length ? await ctx.db.select({ id: products.id, hint: products.cardNumberHint, series: products.series }).from(products).where(inArray(products.id, productIds)) : [];
@@ -160,7 +162,15 @@ export async function stationDetail(ctx: Ctx, p: StaffPrincipal, lotteryId: stri
     ...view,
     cardNumberHint: prods.map((x) => x.hint).filter(Boolean)[0] ?? null,
     series: prods.map((x) => x.series),
-    subjectUnits: snap?.subjectUnits ?? [],
+    // the frozen snapshot keeps the original boxes; X4 swaps are applied on top (and published separately)
+    subjectUnits: (snap?.subjectUnits ?? []).map((u) => {
+      // follow the chain: A → B, then B → C shows C
+      let cur = u;
+      for (let r = swaps.find((x) => x.fromLabel === cur.label); r; r = swaps.find((x) => x.fromLabel === cur.label)) cur = { label: r.toLabel, sealPhotoUrls: r.photoUrls };
+      return cur;
+    }),
+    replacements: swaps,
+    candidates: view.lottery.status === "READY" ? await replacementCandidates(ctx, lotteryId) : [],
     checklistSize: snap?.checklist?.length ?? 0,
   };
 }
@@ -228,7 +238,7 @@ export async function warehouseOverview(ctx: Ctx, p: StaffPrincipal) {
     .orderBy(desc(shipments.shippedAt))
     .limit(100);
   const k = await ctx.db.execute<{ avg: string | null; n: string }>(
-    sql`SELECT avg(slot_count)::text AS avg, count(*)::text AS n FROM shipments WHERE status IN ('REQUESTED','PICKING','PACKED','SHIPPED','DELIVERED')`,
+    sql`SELECT avg(slot_count)::text AS avg, count(*)::text AS n FROM shipments WHERE status IN ('REQUESTED','PICKING','PACKED','SHIPPED','DELIVERED','LOST')`,
   );
   return { toPutAway, reservedGuarantees, shipped, k: k.rows[0]?.avg ? Number(k.rows[0].avg) : null, kShipments: Number(k.rows[0]?.n ?? 0) };
 }

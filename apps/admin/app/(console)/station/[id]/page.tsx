@@ -25,6 +25,7 @@ export default async function StationPage({ params }: { params: Promise<{ id: st
         hint={v.cardNumberHint}
         subjectUnits={v.subjectUnits.map((u) => ({ label: u.label, photos: u.sealPhotoUrls.length }))}
         checklistSize={v.checklistSize}
+        replacementOptions={v.candidates}
       />
       <p className="mt-3 text-xs text-ink2">{t("noUpload")}</p>
     </>

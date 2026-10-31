@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { pendingReviewLotteries } from "@boxrush/services";
 import { Empty, Jst, LotCode, PageHeader, Yen } from "@/components/ui";
+import { PendingAborts } from "@/components/PendingAborts";
 import { ctx, requirePageRole } from "@/lib/session";
 
 export default async function ReviewQueue() {
@@ -11,6 +12,7 @@ export default async function ReviewQueue() {
   return (
     <>
       <PageHeader title={t("title")} code="O07" />
+      <PendingAborts staff={staff} />
       <div className="card overflow-x-auto p-0">
         {rows.length === 0 ? (
           <Empty>{t("empty")}</Empty>

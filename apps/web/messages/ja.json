@@ -136,7 +136,9 @@
     "slotsTable": "枠ごとのカード番号",
     "noNumbers": "カード番号なし（0枚の場合は保証カード）",
     "snapshotHash": "ルールのハッシュ",
-    "notFound": "見つかりませんでした"
+    "notFound": "見つかりませんでした",
+    "replaced": "封緘の異常により、開封前に同じロットの未開封BOXへ差し替えました",
+    "replacedDetail": "{from} → {to}（ロット {lot}・{at}）"
   },
   "checkout": {
     "title": "購入内容の確認",
@@ -201,7 +203,9 @@
     "mineOnly": "自分の枠のみ",
     "appeal": "申し立てる",
     "offList": "リスト外",
-    "pending": "振り分けが確定すると表示されます"
+    "pending": "振り分けが確定すると表示されます",
+    "defect": "出荷時の状態：{note}",
+    "defectHelp": "メーカー出荷時の状態として録画で確認。開封時のまま振り分けます"
   },
   "video": {
     "title": "録画",
@@ -254,7 +258,8 @@
     "tabs": {
       "STORED": "保管中",
       "SHIPPING": "発送中",
-      "RECEIVED": "受取済"
+      "RECEIVED": "受取済",
+      "LOST": "配送事故"
     },
     "freeUntil": "無料保管 {at} まで",
     "select": "選択",
@@ -267,7 +272,13 @@
     "videoAt": "開封の録画 {t}",
     "photo": "実物写真（読取台カメラ）",
     "noShipments": "発送はまだありません",
-    "shipments": "発送履歴"
+    "shipments": "発送履歴",
+    "defect": "メーカー出荷時の状態：{note}",
+    "defectHelp": "開封の録画で確認した出荷時の状態です。カードは開封時のまま振り分け・お届けします（平台による補償の対象外です）。",
+    "incident": {
+      "LOST": "配送中に紛失しました。運送会社への補償請求を進めています。",
+      "DAMAGED": "配送中に破損しました。運送会社への補償請求を進めています。"
+    }
   },
   "ship": {
     "title": "発送申請",
@@ -291,13 +302,25 @@
       "SHIPPED": "発送済み",
       "DELIVERED": "お届け済み",
       "RETURNED": "返送",
-      "CANCELLED": "取消"
+      "CANCELLED": "取消",
+      "LOST": "配送事故（紛失）"
     },
     "tracking": "伝票番号",
     "carrier": "配送業者",
     "forced": "保管期限による発送",
     "detail": "発送詳細",
-    "compensationCap": "補償上限 {amount}"
+    "compensationCap": "補償上限 {amount}",
+    "incident": {
+      "LOST": "配送中に紛失しました",
+      "DAMAGED": "配送中に破損しました"
+    },
+    "claimInfo": "運送会社へ補償を請求しています（補償上限 {cap}）。結果はこのページとメールでお知らせします。",
+    "claim": {
+      "OPEN": "請求準備中",
+      "SUBMITTED": "運送会社に請求済み",
+      "PAID": "運送会社の補償が確定しました",
+      "REJECTED": "運送会社が補償を認めませんでした。お問い合わせからご連絡ください"
+    }
   },
   "orders": {
     "title": "注文・返金",
@@ -526,6 +549,7 @@
     "INVALID_CARD": "カード情報が正しくありません",
     "VALIDATION": "入力内容をご確認ください",
     "PHONE_TAKEN": "この電話番号は別のアカウントで使われています",
-    "AUTH_FAILED": "メールアドレスまたはパスワードが違います"
+    "AUTH_FAILED": "メールアドレスまたはパスワードが違います",
+    "TOO_MANY_ATTEMPTS": "試行回数が多すぎます。しばらく待ってからもう一度お試しください"
   }
 }

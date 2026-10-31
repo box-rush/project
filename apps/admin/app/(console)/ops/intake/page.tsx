@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { listIntakeBookings, listMerchants, listProducts } from "@boxrush/services";
+import { documentsForBookings, listIntakeBookings, listMerchants, listProducts } from "@boxrush/services";
 import { Jst, PageHeader } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
 import { ReceiveForm } from "./ReceiveForm";
@@ -10,6 +10,7 @@ export default async function Intake() {
   const t = await getTranslations("inspection");
   const ti = await getTranslations("intake");
   const [bookings, merchants, products] = await Promise.all([listIntakeBookings(ctx(), staff), listMerchants(ctx(), staff), listProducts(ctx())]);
+  const docs = await documentsForBookings(ctx(), bookings.map((b) => b.booking.id));
   return (
     <>
       <PageHeader title={t("title")} code="O05" />
@@ -24,6 +25,7 @@ export default async function Intake() {
                 <th>{ti("product")}</th>
                 <th className="text-right">{ti("quantity")}</th>
                 <th>{ti("status")}</th>
+                <th>{ti("documents")}</th>
               </tr>
             </thead>
             <tbody>
@@ -37,6 +39,15 @@ export default async function Intake() {
                   <td className="mono text-right">{b.expectedQuantity}</td>
                   <td>
                     <span className="badge">{ti(`statuses.${b.status}`)}</span>
+                  </td>
+                  <td className="text-xs">
+                    {docs
+                      .filter((d) => d.intakeBookingId === b.id)
+                      .map((d) => (
+                        <a key={d.id} href={`/api/documents/${d.id}`} className="block text-primary underline">
+                          {d.fileName}
+                        </a>
+                      ))}
                   </td>
                 </tr>
               ))}

@@ -100,7 +100,8 @@
       "O18": "Finance",
       "O16": "Risk",
       "O17": "Audit log",
-      "O20": "Monitoring"
+      "O20": "Monitoring",
+      "O13incidents": "Shipping incidents"
     }
   },
   "ok": {
@@ -135,7 +136,9 @@
     "openingStarted": "Opening started; recording",
     "markerAdded": "Marker recorded",
     "aborted": "This lottery was aborted; full refunds are being issued",
-    "openingFinished": "Opening finished; sent to attribution"
+    "openingFinished": "Opening finished; sent to attribution",
+    "deviceRegistered": "Device registered",
+    "uploaded": "Uploaded"
   },
   "errors": {
     "UNKNOWN": "Something went wrong ({code})",
@@ -218,7 +221,23 @@
     "ON_LIST_CARD_FIXED_SLOT": "An on-list card number can only go to the slot the draw gave it",
     "INVENTORY_UNAVAILABLE": "The box or guarantee cards are already allocated to another lottery",
     "LOGIN_THROTTLED": "Too many failed sign-ins. Please try again later",
-    "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes"
+    "MFA_LOCKED": "Too many wrong codes. Two-step verification is locked for 15 minutes",
+    "INVALID_SETTING": "Invalid value",
+    "INVALID_DEVICE": "Enter a station ID (A–Z, 0–9, hyphen) and a name",
+    "INVALID_SEGMENT": "The recording segment is malformed",
+    "SEGMENT_CONFLICT": "A segment with this number was already recorded with different content",
+    "UNAUTHORIZED": "Authentication failed",
+    "INVALID_FAQ": "Check the question, answer and section",
+    "CLAIM_CLOSED": "This claim is closed",
+    "INVALID_AMOUNT": "Enter an amount within the cap ({cap})",
+    "INVALID_NOTE": "Up to 200 characters",
+    "NOT_SUBJECT_UNIT": "Not a box of this lottery",
+    "REPLACEMENT_NOT_AVAILABLE": "The replacement box is not available (inspected, in stock only)",
+    "REPLACEMENT_NOT_SAME_LOT": "Only a box of the same product and lot can replace it",
+    "DOCUMENT_REQUIRED": "Choose a file",
+    "DOCUMENT_TOO_LARGE": "Files up to {max}",
+    "DOCUMENT_TYPE": "Only PDF, JPEG, PNG and WebP",
+    "DOCUMENT_TAMPERED": "The file does not match its record"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -355,7 +374,10 @@
       "INSPECTING": "Inspecting",
       "PASSED": "Passed",
       "FAILED": "Failed"
-    }
+    },
+    "documents": "Purchase proofs",
+    "upload": "Upload",
+    "documentFile": "Proof file (PDF / image, up to 10 MB)"
   },
   "review": {
     "title": "Review queue",
@@ -716,7 +738,19 @@
     "finishConfirm": "{n} cards entered. Finish and send to attribution?",
     "abortPendingTitle": "Both recording paths reported down",
     "abortPendingHelp": "The station is frozen. Once a different staff member (station or reviewer) confirms, this opening is aborted and fully refunded. It cannot continue.",
-    "confirmAbort": "Confirm abort (different staff member)"
+    "confirmAbort": "Confirm abort (different staff member)",
+    "pendingAbortsTitle": "{n} report(s) of both recording paths lost await confirmation",
+    "pendingAbortsMine": "Your report (waiting for another person)",
+    "pendingAbortsOpen": "Confirm",
+    "replaceTitle": "Replace with a box from the same lot (X4)",
+    "replaceHelp": "Only when the seal is broken and an inspected box of the same product and lot is in stock. The swap (old / new label, lot, reason, photos) is published on the lottery page. The draw (card-number assignment) does not change.",
+    "replaceFrom": "Box with the broken seal",
+    "replaceTo": "Replacement (same lot)",
+    "replaceReason": "Reason (published)",
+    "replacePhotos": "Photo URLs of the damage (space-separated)",
+    "replaceSubmit": "Replace",
+    "replaceConfirm": "Replace the box and publish the record?",
+    "replaceNone": "No box of the same lot in stock. If it cannot be replaced, abort for the seal anomaly."
   },
   "attribution": {
     "title": "Attribution",
@@ -773,7 +807,11 @@
       "offList": "Off-list",
       "review": "Needs review",
       "void": "Void"
-    }
+    },
+    "defect": "Record maker condition (X9)",
+    "defectLabel": "Condition from the maker (e.g. print shift, edge whitening)",
+    "defectSave": "Record",
+    "defectShown": "Maker condition: {note}"
   },
   "warehouse": {
     "title": "Warehouse",
@@ -816,8 +854,31 @@
       "in": "Put-away",
       "req": "Requests",
       "pack": "Packing",
-      "out": "Shipped"
-    }
+      "out": "Shipped",
+      "inc": "Incidents"
+    },
+    "reportIncident": "Record a shipping incident",
+    "reportIncidentSubmit": "Record",
+    "reportIncidentConfirm": "This records a shipping incident and notifies the customer. A lost parcel closes its cards as lost. Continue?",
+    "incident": {
+      "LOST": "Lost",
+      "DAMAGED": "Damaged"
+    },
+    "incidentNote": "What happened (carrier report etc.)",
+    "incidentReported": "Incident recorded",
+    "incidentKind": "Type",
+    "claimCap": "Cap",
+    "claimStatus": "Claim",
+    "claimRef": "Claim no.",
+    "claimAmount": "Amount",
+    "claimSave": "Update",
+    "claim": {
+      "OPEN": "Not claimed",
+      "SUBMITTED": "Claimed",
+      "PAID": "Paid",
+      "REJECTED": "Rejected"
+    },
+    "incidentHelp": "Caps: standard ¥3,000, insured ¥30,000 (F9.5). How compensation reaches the customer is not decided yet (§10.14)."
   },
   "tickets": {
     "title": "Tickets",
@@ -845,7 +906,8 @@
     "author": {
       "USER": "User",
       "STAFF": "Staff"
-    }
+    },
+    "faqs": "FAQ & how-to"
   },
   "arbitration": {
     "title": "Arbitration",
@@ -986,6 +1048,51 @@
       "RUNNING": "Running",
       "FAILED": "Failed",
       "DONE": "Done"
+    },
+    "recordingLossTitle": "When a recording-loss report is not confirmed",
+    "recordingLossHelp": "What happens when a station reports both recording paths lost and no second person confirms. Alerts start after 15 minutes in either case. Changes are audited.",
+    "save": "Save",
+    "recordingLoss": {
+      "AUTO_ABORT_24H": {
+        "label": "Abort and fully refund automatically after 24 hours",
+        "help": "Buyers are never left waiting, but without a confirmer a single report ends in an abort."
+      },
+      "ALERT_ONLY": {
+        "label": "Alert only (never abort automatically)",
+        "help": "Keeps the two-person rule strictly; until someone confirms, the opening stays open and nobody is refunded."
+      }
+    },
+    "devicesTitle": "Recording devices",
+    "devicesHelp": "Tokens the station cameras use to post recording segments (checksum and storage location). A token is shown only once, when it is issued.",
+    "deviceStation": "Station ID",
+    "deviceLabel": "Name",
+    "deviceRegister": "Register device",
+    "deviceTokenOnce": "This token is shown only this once. Configure it on the device.",
+    "deviceCreated": "Registered",
+    "deviceLastSeen": "Last received",
+    "deviceRevoke": "Revoke",
+    "deviceRevoked": "Revoked",
+    "deviceRevokeConfirm": "Revoke this device token?"
+  },
+  "faqs": {
+    "title": "FAQ & how-to",
+    "help": "Content of the help page (how it works, fairness, payment, storage & shipping, account). Hidden entries are not shown. Changes are audited.",
+    "add": "Add entry",
+    "create": "Add",
+    "save": "Save",
+    "section": "Section",
+    "locale": "Language",
+    "sort": "Order",
+    "question": "Question",
+    "answer": "Answer",
+    "published": "Published",
+    "hidden": "Hidden",
+    "sections": {
+      "GUIDE": "How it works",
+      "FAIRNESS": "Fairness",
+      "PAYMENT": "Payment",
+      "SHIPPING": "Storage & shipping",
+      "ACCOUNT": "Account"
     }
   }
 }

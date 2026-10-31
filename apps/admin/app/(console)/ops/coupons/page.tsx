@@ -83,7 +83,7 @@ export default async function Coupons() {
                     <td>
                       {!c.usedAt && !c.voidedAt ? (
                         <ActionForm action={voidCouponAction.bind(null, c.id)} submitLabel={t("void")} submitClass="btn !min-h-7 text-xs" inline>
-                          <input name="reason" className="input !w-32 text-xs" placeholder={t("voidReason")} />
+                          <input name="reason" className="input !w-32 text-xs" aria-label={t("voidReason")} placeholder={t("voidReason")} />
                         </ActionForm>
                       ) : null}
                     </td>

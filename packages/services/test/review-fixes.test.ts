@@ -5,7 +5,7 @@ import {
   approveLottery, confirmAttribution, correctOrAddCard, createStaff, enterCard, expireUnpaidShipment, finalizeAttribution, finishOpening, frozenRecordText,
   getLottery, handlePaymentEvent, holdSlots, paymentForOrder, proposeAttribution, reclaimStaleJobs, requestShipment, runDueJobs, saveDraft, staffLogin,
   staffVerifyMfa, startOpening, submitForReview, upsertAddress, totp, addPaymentMethod, forcedShipmentSweep, forcedCharge, escalatePendingAborts,
-  reportRecordingState, confirmRecordingAbort, reconcile, type JobHandler,
+  reportRecordingState, confirmRecordingAbort, reconcile, setSetting, type JobHandler,
 } from "../src";
 import { Clock, JST, buy, configFor, drain, listedLottery, makeCtx, makeUser, makeWorld, pgRejects } from "./helpers";
 import { collectionItems } from "@boxrush/db";
@@ -180,6 +180,32 @@ describe("review fixes", () => {
     clock.advanceHours(24);
     await escalatePendingAborts(ctx);
     expect((await getLottery(ctx.db, id)).status).toBe("ABORTED");
+  });
+
+  it("ADMIN setting ALERT_ONLY: an unconfirmed report is only alerted, never auto-aborted", async () => {
+    const clock = new Clock(JST(2026, 12, 9, 12));
+    const { ctx, payments } = makeCtx(clock);
+    const w = await makeWorld(ctx);
+    const admin = await w.mkStaff(["ADMIN"]);
+    await expect(setSetting(ctx, w.reviewer, "recordingLossUnconfirmed", "ALERT_ONLY")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(setSetting(ctx, admin, "recordingLossUnconfirmed", "NEVER")).rejects.toMatchObject({ code: "INVALID_SETTING" });
+    await setSetting(ctx, admin, "recordingLossUnconfirmed", "ALERT_ONLY");
+    try {
+      const id = await listedLottery(ctx, w, { slots: 1 });
+      await buy(ctx, payments, await makeUser(ctx.db), id, 1);
+      await drain(ctx);
+      clock.set((await getLottery(ctx.db, id)).openingAt);
+      await startOpening(ctx, w.station, id, "ST-AO");
+      await reportRecordingState(ctx, w.station, id, "BOTH_DOWN");
+      clock.advanceHours(25);
+      expect((await escalatePendingAborts(ctx)).alerts).toBeGreaterThanOrEqual(1);
+      expect((await getLottery(ctx.db, id)).status).toBe("OPENING");
+      await confirmRecordingAbort(ctx, w.reviewer, id); // a second person can still abort
+      expect((await getLottery(ctx.db, id)).status).toBe("ABORTED");
+    } finally {
+      // the test DB is shared: restore the default for other tests
+      await setSetting(ctx, admin, "recordingLossUnconfirmed", "AUTO_ABORT_24H");
+    }
   });
 
   it("an aborted lottery is never escalated again; reconcile and jobs keep running long after", async () => {

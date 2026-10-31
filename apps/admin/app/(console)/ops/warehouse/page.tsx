@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { isSrOrAbove } from "@boxrush/core/params";
-import { pickList, warehouseOverview } from "@boxrush/services";
+import { listIncidents, pickList, warehouseOverview } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { Empty, Jst, LotCode, PageHeader, fix } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { deliveredAction, putAwayAction, shipAction, startPickingAction } from "../actions";
+import { deliveredAction, putAwayAction, reportIncidentAction, shipAction, startPickingAction } from "../actions";
 import { PackStation } from "./PackStation";
 
 const TABS = ["in", "req", "pack", "out"] as const;
@@ -15,7 +15,8 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
   const t = await getTranslations("warehouse");
   const sp = await searchParams;
   const tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as (typeof TABS)[number]) : "in";
-  const [o, picks] = await Promise.all([warehouseOverview(ctx(), staff), pickList(ctx())]);
+  const [o, picks, incidents] = await Promise.all([warehouseOverview(ctx(), staff), pickList(ctx()), listIncidents(ctx(), staff)]);
+  const hasIncident = new Set(incidents.map((i) => i.incident.shipmentId));
   const requested = picks.filter((p) => p.shipment.status === "REQUESTED");
   const picking = picks.filter((p) => p.shipment.status === "PICKING");
   const packed = picks.filter((p) => p.shipment.status === "PACKED");
@@ -23,6 +24,9 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
     <>
       <PageHeader title={t("title")} code="O13">
         <span className="badge badge-primary mono">{t("kChip", { k: fix(o.k, 1), n: o.kShipments })}</span>
+        <Link href="/ops/incidents" className="btn !min-h-8 text-xs">
+          {t("tabs.inc")}
+        </Link>
       </PageHeader>
       <nav className="mb-4 flex gap-1">
         {TABS.map((k) => (
@@ -168,8 +172,8 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
                       <td>{s.insured ? <span className="badge badge-gold">{t("insured")}</span> : <span className="badge">{t("standard")}</span>}</td>
                       <td>
                         <ActionForm action={shipAction.bind(null, s.id)} submitLabel={t("ship")} submitClass="btn btn-primary !min-h-7 text-xs" inline>
-                          <input name="trackingNumber" className="input mono !w-48 text-xs" placeholder={t("tracking")} required />
-                          <input name="carrier" className="input !w-36 text-xs" placeholder={t("carrier")} />
+                          <input name="trackingNumber" className="input mono !w-48 text-xs" aria-label={t("tracking")} placeholder={t("tracking")} required />
+                          <input name="carrier" className="input !w-36 text-xs" aria-label={t("carrier")} placeholder={t("carrier")} />
                         </ActionForm>
                       </td>
                     </tr>
@@ -209,6 +213,26 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
                     <td>{s.status === "DELIVERED" ? <span className="badge badge-trust">{t("delivered")}</span> : <span className="badge badge-primary">{t("inTransit")}</span>}</td>
                     <td>
                       {s.status === "SHIPPED" ? <ActionForm action={deliveredAction.bind(null, s.id)} submitLabel={t("markDelivered")} submitClass="btn !min-h-7 text-xs" /> : null}
+                      {!hasIncident.has(s.id) ? (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-xs text-error">{t("reportIncident")}</summary>
+                          <ActionForm action={reportIncidentAction.bind(null, s.id)} submitLabel={t("reportIncidentSubmit")} submitClass="btn btn-danger !min-h-7 text-xs" confirmText={t("reportIncidentConfirm")} className="mt-2">
+                            <div className="flex gap-3 text-xs">
+                              {s.status === "SHIPPED" ? (
+                                <label className="flex items-center gap-1">
+                                  <input type="radio" name="kind" value="LOST" defaultChecked /> {t("incident.LOST")}
+                                </label>
+                              ) : null}
+                              <label className="flex items-center gap-1">
+                                <input type="radio" name="kind" value="DAMAGED" defaultChecked={s.status === "DELIVERED"} /> {t("incident.DAMAGED")}
+                              </label>
+                            </div>
+                            <input name="note" className="input text-xs" aria-label={t("incidentNote")} placeholder={t("incidentNote")} required />
+                          </ActionForm>
+                        </details>
+                      ) : (
+                        <span className="badge badge-error">{t("incidentReported")}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -218,6 +242,7 @@ export default async function Warehouse({ searchParams }: { searchParams: Promis
           <p className="px-4 pb-3 text-xs text-ink2">{t("deliveredHelp")}</p>
         </section>
       )}
+
     </>
   );
 }

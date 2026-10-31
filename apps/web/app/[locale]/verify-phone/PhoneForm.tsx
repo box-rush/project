@@ -41,7 +41,7 @@ export function PhoneForm({ next, already, onboarded }: { next: string; already:
           const c = await checkPhone(toE164(phone));
           if (!c.ok) return setErr(c.code);
           const r = await authClient.phoneNumber.sendOtp({ phoneNumber: toE164(phone) });
-          if (r.error) return setErr("UNEXPECTED");
+          if (r.error) return setErr(r.error.status === 429 ? "TOO_MANY_ATTEMPTS" : "UNEXPECTED");
           setSent(true);
         }}
       >
@@ -60,7 +60,7 @@ export function PhoneForm({ next, already, onboarded }: { next: string; already:
             onClick={async () => {
               setErr(null);
               const r = await authClient.phoneNumber.verify({ phoneNumber: toE164(phone), code, updatePhoneNumber: true });
-              if (r.error) return setErr(r.error.status === 400 ? "VALIDATION" : "PHONE_TAKEN");
+              if (r.error) return setErr(r.error.status === 429 ? "TOO_MANY_ATTEMPTS" : r.error.status === 400 ? "VALIDATION" : "PHONE_TAKEN");
               go();
             }}
           >

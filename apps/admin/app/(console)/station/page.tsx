@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { stationLotteries } from "@boxrush/services";
 import { Empty, Jst, LotCode, PageHeader, StatusBadge } from "@/components/ui";
+import { PendingAborts } from "@/components/PendingAborts";
 import { ctx, requirePageRole } from "@/lib/session";
 
 export default async function StationList() {
@@ -11,6 +12,7 @@ export default async function StationList() {
   return (
     <>
       <PageHeader title={t("title")} code="O11" />
+      <PendingAborts staff={staff} />
       <p className="mb-3 text-sm text-ink2">{t("pickHelp")}</p>
       <div className="card p-0">
         {rows.length === 0 ? (

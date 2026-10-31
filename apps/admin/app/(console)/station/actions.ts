@@ -1,5 +1,5 @@
 "use server";
-import { abortForSealAnomaly, addMarker, confirmRecordingAbort, enterCard, fail, finishOpening, reportRecordingState, startOpening, voidLastEntry } from "@boxrush/services";
+import { abortForSealAnomaly, addMarker, replaceSubjectUnit, confirmRecordingAbort, enterCard, fail, finishOpening, reportRecordingState, startOpening, voidLastEntry } from "@boxrush/services";
 import { act } from "@/lib/action";
 import { ctx } from "@/lib/session";
 
@@ -46,4 +46,9 @@ export async function finishAction(lotteryId: string) {
 
 export async function sealAnomalyAction(lotteryId: string) {
   return act((s) => abortForSealAnomaly(ctx(), s, lotteryId), { revalidate: paths(lotteryId), message: "aborted" });
+}
+
+/** X4: swap a broken-seal box for an inspected box of the same product and lot; the swap is published. */
+export async function replaceSubjectAction(lotteryId: string, input: { fromUnitId: string; toUnitId: string; reason: string; photoUrls: string }) {
+  return act((s) => replaceSubjectUnit(ctx(), s, lotteryId, { ...input, photoUrls: input.photoUrls.split(/\s+/).filter(Boolean) }), { revalidate: paths(lotteryId), message: "saved" });
 }

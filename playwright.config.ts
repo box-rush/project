@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "@playwright/test";
 
 /**
@@ -22,6 +23,13 @@ export default defineConfig({
           timeout: 120_000,
           env: { PAYMENT_PROVIDER: "mock", BETTER_AUTH_URL: "http://localhost:3100", WEB_BASE_URL: "http://localhost:3100", RNG_SEED_KEY: "00".repeat(32) },
         },
-        { command: "pnpm --filter @boxrush/admin exec next start -p 3101", url: "http://localhost:3101/login", reuseExistingServer: true, timeout: 120_000, env: { RNG_SEED_KEY: "00".repeat(32) } },
+        {
+          command: "pnpm --filter @boxrush/admin exec next start -p 3101",
+          url: "http://localhost:3101/login",
+          reuseExistingServer: true,
+          timeout: 120_000,
+          // approval commits the seed (T11): the admin app reaches the seed vault through the rng login, as in infra/stack.ts
+          env: { PAYMENT_PROVIDER: "mock", DOCUMENTS_DIR: resolve(".data/e2e-documents"), RNG_SEED_KEY: "00".repeat(32), RNG_DATABASE_URL: process.env.RNG_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" },
+        },
       ],
 });

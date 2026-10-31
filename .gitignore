@@ -11,3 +11,4 @@ playwright-report
 next-env.d.ts
 .audit-archive
 .sst
+.data/

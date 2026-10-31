@@ -1,11 +1,12 @@
 import { PARAMS, addHours, addMinutes, buildNumberIndex, formatJst, formatYen, normalizeCardInput } from "@boxrush/core";
-import { and, asc, eq, inArray, inventoryUnits, lotteries, openedCards, openingMarkers, openingSessions, orders, slots, sql, videoSegments, type DbOrTx } from "@boxrush/db";
+import { and, asc, eq, inArray, inventoryUnits, isNull, lotteries, openedCards, openingMarkers, openingSessions, orders, slots, sql, subjectReplacements, videoSegments, type DbOrTx } from "@boxrush/db";
 import { audit, SYSTEM, type Actor } from "./audit";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
 import { getLottery, lockLottery, transition, type Lottery } from "./lotteries";
 import { notify } from "./notifications";
 import { requireRole, staffActor, type StaffPrincipal } from "./principals";
+import { getSetting } from "./settings";
 import { scheduleOrderRefund } from "./refunds";
 
 type Snapshot = { checklist: { number: string; name: string; rarity: string }[]; fallbackRule: string; openingAt: string };
@@ -54,7 +55,17 @@ export async function ingestSegment(
   const [session] = await ctx.db.select().from(openingSessions).where(eq(openingSessions.lotteryId, seg.lotteryId));
   if (!session || session.stationId !== device.stationId) fail("FORBIDDEN");
   await ctx.db.transaction(async (tx) => {
-    await tx.insert(videoSegments).values({ ...seg, backfilled: seg.backfilled ?? false }).onConflictDoNothing();
+    // only while the recording is still evidence in the making: once attribution freezes the record (or the lottery
+    // is aborted), nothing may be appended — the live and the frozen record must never disagree
+    const lot = await lockLottery(tx, seg.lotteryId);
+    if (lot.status !== "OPENING" && lot.status !== "ATTRIBUTING") fail("RECORDING_CLOSED", { status: lot.status });
+    const inserted = await tx.insert(videoSegments).values({ ...seg, backfilled: seg.backfilled ?? false }).onConflictDoNothing().returning({ id: videoSegments.id });
+    if (!inserted.length) {
+      // a retry of the same segment is fine; a different checksum for an existing segment is tampering or a device bug
+      const [prev] = await tx.select({ sha256: videoSegments.sha256 }).from(videoSegments).where(and(eq(videoSegments.lotteryId, seg.lotteryId), eq(videoSegments.source, seg.source), eq(videoSegments.seq, seg.seq)));
+      if (prev?.sha256 !== seg.sha256) fail("SEGMENT_CONFLICT", { seq: seg.seq });
+      return;
+    }
     await audit(tx, { type: "SYSTEM", id: `device:${device.deviceId}` }, "recording.segment", "lottery", seg.lotteryId, { source: seg.source, seq: seg.seq, sha256: seg.sha256 });
   });
 }
@@ -92,8 +103,9 @@ export async function confirmRecordingAbort(ctx: Ctx, p: StaffPrincipal, lottery
 }
 
 /**
- * N3: a both-paths-down report nobody confirms must not leave buyers stuck in OPENING. Reconcile alerts after
- * 15 minutes and, 24 hours after the report (same grace as PD12), the system confirms the abort and refunds everyone.
+ * A both-paths-down report nobody confirms: reconcile alerts after 15 minutes. What happens after 24 hours is an
+ * ADMIN setting (settings.ts, recordingLossUnconfirmed): AUTO_ABORT_24H confirms the abort and refunds everyone
+ * (same grace as PD12); ALERT_ONLY keeps alerting until a second person acts.
  */
 export async function escalatePendingAborts(ctx: Ctx) {
   const now = ctx.now();
@@ -104,10 +116,11 @@ export async function escalatePendingAborts(ctx: Ctx) {
     .where(and(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"), eq(lotteries.status, "OPENING")));
   let alerts = 0;
   let errors = 0;
+  const policy = pending.length ? await getSetting(ctx.db, "recordingLossUnconfirmed") : "AUTO_ABORT_24H";
   for (const s of pending) {
     const age = now.getTime() - (s.requestedAt?.getTime() ?? now.getTime());
     try {
-      if (age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
+      if (policy === "AUTO_ABORT_24H" && age >= PARAMS.openingGraceHours * 3600_000) await abortLottery(ctx, SYSTEM, s.lotteryId, "RECORDING_INTERRUPTED");
       else if (age >= 15 * 60_000) alerts++;
     } catch (e) {
       // one lottery must never stall the reconcile loop (and with it the whole job queue)
@@ -116,6 +129,17 @@ export async function escalatePendingAborts(ctx: Ctx) {
     }
   }
   return { alerts, errors };
+}
+
+/** X7 reports waiting for a second person (shown to STATION and REVIEWER staff with a link to confirm). */
+export async function pendingRecordingAborts(ctx: Ctx, p: StaffPrincipal) {
+  requireRole(p, "STATION", "REVIEWER");
+  return ctx.db
+    .select({ lotteryId: lotteries.id, code: lotteries.code, title: lotteries.title, requestedAt: openingSessions.abortRequestedAt, requestedBy: openingSessions.abortRequestedBy })
+    .from(openingSessions)
+    .innerJoin(lotteries, eq(lotteries.id, openingSessions.lotteryId))
+    .where(and(eq(openingSessions.recordingState, "BOTH_DOWN_PENDING"), eq(lotteries.status, "OPENING")))
+    .orderBy(asc(openingSessions.abortRequestedAt));
 }
 
 async function assertRecordingUsable(tx: DbOrTx, lotteryId: string) {
@@ -139,9 +163,19 @@ export async function abortLottery(ctx: Ctx, actor: Actor, lotteryId: string, re
       await scheduleOrderRefund(tx, o, "ABORTED", now);
       await notify(tx, o.userId, "ABORTED_REFUNDED", { title: lot.title, reason, amount: formatYen(o.amount) }, `aborted:${o.id}`, now);
     }
-    // PD5: opened stock stays with the platform; unopened subject and unused guarantee cards go back to stock.
-    const opened = reason === "RECORDING_INTERRUPTED" ? "OPENED" : "IN_STOCK";
-    await tx.update(inventoryUnits).set({ status: opened }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED")));
+    // PD5: opened stock stays with the platform. A box whose seal is broken (X4) is rejected for good and never listed
+    // again; an unopened, intact box (beacon missing) goes back to stock. Only boxes still allocated are touched —
+    // a box already replaced under X4 stays REJECTED.
+    const subjectSet =
+      reason === "RECORDING_INTERRUPTED"
+        ? { status: "OPENED" as const }
+        : reason === "SEAL_ANOMALY"
+          ? { status: "REJECTED" as const, rejectReason: "X4: seal anomaly before opening" }
+          : { status: "IN_STOCK" as const, lotteryId: null };
+    await tx
+      .update(inventoryUnits)
+      .set(subjectSet)
+      .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
     await tx.update(inventoryUnits).set({ status: "IN_STOCK", lotteryId: null }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "GUARANTEE_CARD")));
     const { enqueue } = await import("./jobs");
     await enqueue(tx, "lottery.checkRefunded", `lottery:${lotteryId}:checkRefunded`, now, { lotteryId });
@@ -153,6 +187,64 @@ export async function abortForSealAnomaly(ctx: Ctx, p: StaffPrincipal, lotteryId
   // X4 applies before opening, once the draw is published (READY)
   if ((await getLottery(ctx.db, lotteryId)).status !== "READY") fail("NOT_READY");
   await abortLottery(ctx, staffActor(p), lotteryId, "SEAL_ANOMALY");
+}
+
+/**
+ * X4: the seal of a subject box is broken before opening. If another inspected box of the same product and the same
+ * lot is in stock, it replaces the broken one and the swap is published (from / to label, lot, reason, photos);
+ * otherwise the only path is abortForSealAnomaly. The draw is unaffected: it assigns card numbers, not boxes.
+ */
+export async function replaceSubjectUnit(ctx: Ctx, p: StaffPrincipal, lotteryId: string, input: { fromUnitId: string; toUnitId: string; reason: string; photoUrls: string[] }) {
+  requireRole(p, "STATION", "REVIEWER");
+  const reason = input.reason.trim();
+  const photos = input.photoUrls.map((u) => u.trim()).filter((u) => /^(https:\/\/|\/)/.test(u));
+  if (!reason) fail("REASON_REQUIRED");
+  if (!photos.length) fail("PHOTO_REQUIRED");
+  const now = ctx.now();
+  await ctx.db.transaction(async (tx) => {
+    const lot = await lockLottery(tx, lotteryId);
+    if (lot.status !== "READY") fail("NOT_READY");
+    const units = await tx.select().from(inventoryUnits).where(inArray(inventoryUnits.id, [input.fromUnitId, input.toUnitId])).for("update");
+    const from = units.find((u) => u.id === input.fromUnitId);
+    const to = units.find((u) => u.id === input.toUnitId);
+    if (!from || from.lotteryId !== lotteryId || from.kind !== "SEALED" || from.status !== "ALLOCATED") fail("NOT_SUBJECT_UNIT");
+    if (!to || to.kind !== "SEALED" || to.status !== "IN_STOCK" || to.lotteryId || !to.inspectedAt || to.rejectReason) fail("REPLACEMENT_NOT_AVAILABLE");
+    if (to.productId !== from.productId || to.merchantId !== from.merchantId || !from.lot || to.lot !== from.lot) fail("REPLACEMENT_NOT_SAME_LOT");
+    await tx.update(inventoryUnits).set({ status: "REJECTED", rejectReason: `X4: ${reason}` }).where(eq(inventoryUnits.id, from.id));
+    await tx.update(inventoryUnits).set({ status: "ALLOCATED", lotteryId }).where(eq(inventoryUnits.id, to.id));
+    await tx.insert(subjectReplacements).values({ lotteryId, fromUnitId: from.id, toUnitId: to.id, fromLabel: from.label, toLabel: to.label, lot: from.lot, reason, photoUrls: photos, replacedBy: p.id, replacedAt: now });
+    await audit(tx, staffActor(p), "opening.replace_subject", "lottery", lotteryId, { from: from.label, to: to.label, lot: from.lot, reason }, now);
+  });
+}
+
+/** Boxes that may replace a subject box (X4): inspected, in stock, same product, merchant and lot. */
+export async function replacementCandidates(ctx: Ctx, lotteryId: string) {
+  const subject = await ctx.db
+    .select()
+    .from(inventoryUnits)
+    .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
+  const out: { from: { id: string; label: string; lot: string | null }; candidates: { id: string; label: string }[] }[] = [];
+  for (const u of subject) {
+    const candidates = u.lot
+      ? await ctx.db
+          .select({ id: inventoryUnits.id, label: inventoryUnits.label })
+          .from(inventoryUnits)
+          .where(
+            and(
+              eq(inventoryUnits.kind, "SEALED"),
+              eq(inventoryUnits.status, "IN_STOCK"),
+              isNull(inventoryUnits.lotteryId),
+              isNull(inventoryUnits.rejectReason),
+              eq(inventoryUnits.productId, u.productId!),
+              eq(inventoryUnits.merchantId, u.merchantId),
+              eq(inventoryUnits.lot, u.lot),
+            ),
+          )
+          .orderBy(asc(inventoryUnits.label))
+      : [];
+    out.push({ from: { id: u.id, label: u.label, lot: u.lot }, candidates });
+  }
+  return out;
 }
 
 /** X6: publish delay reason and new time (does not move the 24h grace, which counts from the promise). */
@@ -278,7 +370,10 @@ export async function finishOpening(ctx: Ctx, p: StaffPrincipal, lotteryId: stri
     const laborSeconds = session ? Math.round((now.getTime() - session.startedAt.getTime()) / 1000) : null;
     await tx.update(openingSessions).set({ endedAt: now, laborSeconds }).where(eq(openingSessions.lotteryId, lotteryId));
     await transition(tx, lot, "ATTRIBUTING", staffActor(p), { openingEndedAt: now }, now);
-    await tx.update(inventoryUnits).set({ status: "OPENED" }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED")));
+    await tx
+      .update(inventoryUnits)
+      .set({ status: "OPENED" })
+      .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
   });
 }
 

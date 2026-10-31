@@ -6,7 +6,7 @@ import { attributionDetail, frozenRecord } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { JstFull, LotCode, MethodBadge, PageHeader, Rarity, StatusBadge } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { confirmAction, correctAction, finalizeAction, proposeAction } from "../../actions";
+import { confirmAction, defectNoteAction, correctAction, finalizeAction, proposeAction } from "../../actions";
 
 export default async function AttributionDesk({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string }> }) {
   const { id } = await params;
@@ -133,6 +133,15 @@ export default async function AttributionDesk({ params, searchParams }: { params
                   <td>
                     <span className={`badge ${c.status === "NEEDS_REVIEW" ? "badge-primary" : ""}`}>{statusLabel(c)}</span>
                     {c.note ? <div className="max-w-[200px] text-[11px] text-ink2">{c.note}</div> : null}
+                    {c.defectNote ? <div className="max-w-[200px] text-[11px] font-semibold text-warning">{t("defectShown", { note: c.defectNote })}</div> : null}
+                    {attributing && c.status !== "VOID" ? (
+                      <details className="text-[11px]">
+                        <summary className="cursor-pointer text-ink2">{t("defect")}</summary>
+                        <ActionForm action={defectNoteAction.bind(null, id, c.id)} submitLabel={t("defectSave")} submitClass="btn !min-h-7 text-xs">
+                          <input name="defect" className="input !min-h-7 text-xs" maxLength={200} defaultValue={c.defectNote ?? ""} aria-label={t("defectLabel")} placeholder={t("defectLabel")} />
+                        </ActionForm>
+                      </details>
+                    ) : null}
                   </td>
                   <td className="text-[11px] leading-tight">
                     <div>
@@ -163,7 +172,7 @@ export default async function AttributionDesk({ params, searchParams }: { params
                                 </option>
                               ))}
                             </select>
-                            <input name="note" className="input !min-h-7 text-xs" placeholder={t("note")} required />
+                            <input name="note" className="input !min-h-7 text-xs" aria-label={t("note")} placeholder={t("note")} required />
                           </ActionForm>
                         </details>
                       </div>
@@ -194,8 +203,8 @@ export default async function AttributionDesk({ params, searchParams }: { params
             <div className="card p-3">
               <h3 className="mb-2 text-xs font-bold">{t("correctTitle")}</h3>
               <ActionForm action={correctAction.bind(null, id)} submitLabel={t("correctSubmit")} submitClass="btn !min-h-8 text-xs">
-                <input name="raw" className="input mono text-xs" placeholder={t("number")} required />
-                <input name="videoTsSec" type="number" min={0} className="input mono text-xs" placeholder={t("tsSec")} required />
+                <input name="raw" className="input mono text-xs" aria-label={t("number")} placeholder={t("number")} required />
+                <input name="videoTsSec" type="number" min={0} className="input mono text-xs" aria-label={t("tsSec")} placeholder={t("tsSec")} required />
                 <select name="replacesCardId" className="input text-xs" defaultValue="">
                   <option value="">{t("addMissed")}</option>
                   {live.map((c) => (
@@ -204,7 +213,7 @@ export default async function AttributionDesk({ params, searchParams }: { params
                     </option>
                   ))}
                 </select>
-                <input name="note" className="input text-xs" placeholder={t("note")} required />
+                <input name="note" className="input text-xs" aria-label={t("note")} placeholder={t("note")} required />
               </ActionForm>
               <p className="mt-2 text-[11px] text-ink2">{t("correctHelp")}</p>
             </div>
