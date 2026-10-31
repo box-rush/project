@@ -1,5 +1,6 @@
 import { and, eq, jobs, lte, sql, type DbOrTx } from "@boxrush/db";
 import type { Ctx } from "./context";
+import { reportError } from "./errorReporter";
 
 /**
  * T13: PostgreSQL-backed job queue. The state change and its follow-up job are written in one transaction;
@@ -55,6 +56,8 @@ export async function runDueJobs(ctx: Ctx, handlers: Record<string, JobHandler>,
       // Never give up: refunds, draws and sale closes must eventually happen. Back off up to 30 minutes and
       // let monitoring (stuckJobs) alert on repeated failures.
       const attempts = claimed.attempts + 1;
+      // one-off failures retry quietly; a job failing again and again is worth a human look
+      if (attempts >= 3) reportError(e, { job: claimed.kind, attempts });
       await ctx.db
         .update(jobs)
         .set({

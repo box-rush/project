@@ -9,9 +9,13 @@
  *     migrate one-off task (same image as worker) — `infra/README.md`
  *   KMS key for server seeds (T11), S3 Object Lock bucket for the audit archive (T7), SES identity (T5).
  *
+ * Monitoring (T17): CloudWatch metric filters + alarms → SNS (infra/monitoring.ts).
+ *
  * The services never connect as the RDS master user: the app and the randomness service use the restricted
  * logins from infra/db-login-roles.sql, whose passwords are SST secrets.
  */
+import { monitoring } from "./monitoring";
+
 const stage = $app.stage;
 const isProd = stage === "production";
 
@@ -28,6 +32,8 @@ const secret = {
   TwilioAccountSid: new sst.Secret("TwilioAccountSid", "unset"),
   TwilioAuthToken: new sst.Secret("TwilioAuthToken", "unset"),
   TwilioFrom: new sst.Secret("TwilioFrom", "unset"),
+  // T17 error tracking; "unset" keeps Sentry off
+  SentryDsn: new sst.Secret("SentryDsn", "unset"),
 };
 
 const domain = process.env.BOXRUSH_DOMAIN; // e.g. boxrush.jp (production) / stg.boxrush.jp
@@ -103,6 +109,8 @@ const common = {
   TWILIO_AUTH_TOKEN: secret.TwilioAuthToken.value,
   TWILIO_FROM: secret.TwilioFrom.value,
   AUDIT_ARCHIVE_BUCKET: auditArchive.name,
+  SENTRY_DSN: secret.SentryDsn.value,
+  SENTRY_ENVIRONMENT: stage,
 };
 
 /**
@@ -131,8 +139,10 @@ const cluster = new sst.aws.Cluster("Cluster", { vpc });
 const image = (target: string) => ({ context: ".", dockerfile: "infra/Dockerfile", target });
 
 // ── services ────────────────────────────────────────────────────────────────────────────────────
-new sst.aws.Service("Web", {
+const web = new sst.aws.Service("Web", {
   cluster,
+  // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
+  logging: { name: `/boxrush/${stage}/web`, retention: isProd ? "3 months" : "1 month" },
   image: image("web"),
   cpu: "0.5 vCPU",
   memory: "1 GB",
@@ -158,8 +168,10 @@ new sst.aws.Service("Web", {
   },
 });
 
-new sst.aws.Service("Admin", {
+const admin = new sst.aws.Service("Admin", {
   cluster,
+  // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
+  logging: { name: `/boxrush/${stage}/admin`, retention: isProd ? "3 months" : "1 month" },
   image: image("admin"),
   cpu: "0.25 vCPU",
   memory: "0.5 GB",
@@ -186,8 +198,10 @@ new sst.aws.Service("Admin", {
   },
 });
 
-new sst.aws.Service("Worker", {
+const worker = new sst.aws.Service("Worker", {
   cluster,
+  // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
+  logging: { name: `/boxrush/${stage}/worker`, retention: isProd ? "3 months" : "1 month" },
   image: image("worker"),
   cpu: "0.25 vCPU",
   memory: "0.5 GB",
@@ -212,4 +226,7 @@ new sst.aws.Task("Migrate", {
   environment: { DATABASE_URL: ownerDbUrl },
 });
 
-export const outputs = { seedKey: seedKey.arn, auditArchive: auditArchive.name };
+// T17: log metric filters, alarms and the SNS topic they notify
+const { alertTopic } = monitoring({ stage, isProd, db, web, admin, worker });
+
+export const outputs = { seedKey: seedKey.arn, auditArchive: auditArchive.name, alertTopic: alertTopic.arn };

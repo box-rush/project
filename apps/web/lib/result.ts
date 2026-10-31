@@ -12,7 +12,7 @@ export async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
       const d = e as DomainError;
       return { ok: false, code: d.code, params: JSON.parse(JSON.stringify(d.params ?? {})) };
     }
-    console.error(e);
+    console.error("[web action]", e);
     return { ok: false, code: "UNEXPECTED" };
   }
 }

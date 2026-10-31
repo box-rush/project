@@ -21,6 +21,7 @@
     "@aws-sdk/client-sesv2": "^3.1160.0",
     "@boxrush/core": "workspace:*",
     "@boxrush/db": "workspace:*",
+    "@sentry/node": "^10.78.0",
     "stripe": "^18.0.0",
     "zod": "^3.25.0"
   },

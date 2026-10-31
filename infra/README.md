@@ -46,11 +46,24 @@ Index migrations run inside a transaction and briefly block writes to the table;
 took 4 s in total. Once tables are large in production, add indexes with `CREATE INDEX CONCURRENTLY` in a
 migration of their own (outside a transaction) instead.
 
-**Monitoring hooks (T17).** Point an external check at `https://<admin domain>/api/health?deep=1` (from the allowlisted
-network): it returns 503 when the database round trip fails or the oldest due job is more than 5 minutes late. The
-worker logs `[alert]` lines (failing jobs, unconfirmed X7 reports, notification send failures, sweep failures) — the
-CloudWatch metric filters / alarms on them are still to be created (see Known gaps).
-Migrations must stay backward compatible (§10.12); no deploys from 2 h before an opening until attribution is done.
+**Monitoring (T17).** `infra/monitoring.ts` creates the SNS topic `boxrush-<stage>-alerts` and the alarms below.
+Set `ALERT_EMAILS=ops@example.jp,oncall@example.jp` before `sst deploy`; each address confirms the subscription
+e-mail. Error tracking: `npx sst secret set SentryDsn https://…@….ingest.sentry.io/… --stage <stage>` (server-side
+only; user, cookies, headers, query strings and bodies are dropped, e-mail / phone / card-like numbers masked).
+For an external uptime check, use `https://<admin domain>/api/health?deep=1` from the allowlisted network (503 when
+the database fails or the oldest due job is more than 5 minutes late).
+
+| Alarm | Fires when | What it means |
+|---|---|---|
+| `worker-alerts` | any `[alert]` line | jobs failing / overdue (draws, refunds, sale closes), X7 report unconfirmed, mail or sweep failures |
+| `worker-crash-loop` | 3+ worker starts in an hour | draws and refunds are not running |
+| `worker-errors`, `web-errors`, `admin-errors` | unexpected errors in the logs | a bug or a failing dependency; details in Sentry |
+| `web-5xx`, `admin-5xx` | the app answered 5xx | as above, seen by users |
+| `web-no-healthy-target`, `admin-no-healthy-target` | the load balancer answered 5xx for 3 min | no healthy task: the site is down |
+| `web-latency` | p95 > 2 s for 15 min | scale-out lagging or a slow query |
+| `web-cpu` | CPU > 85 % for 15 min | autoscaling at its maximum; raise `max` |
+| `db-cpu`, `db-storage`, `db-connections` | CPU > 80 % / free < 5 GB / connections near the limit | resize the instance or the pools |
+
 
 ## Known gaps (not yet in this stack)
 - **Separate randomness account (T11, §10.7.3)**: the seed key and randomness service live in the main account here,
@@ -59,7 +72,7 @@ Migrations must stay backward compatible (§10.12); no deploys from 2 h before a
 - **Images are built in CI but not yet pushed or run on AWS**: the `images` job builds all three targets, and the
   layout was checked locally by running the standalone servers and the worker; a first `sst deploy` is still to do.
 - CDN caching for the public verification pages (pages are rendered per request), WAF + Turnstile (T18),
-  CloudWatch alarms / Sentry (T17), AWS Budgets (P11), cross-region copy to Osaka (P12), RDS Proxy.
+  AWS Budgets (P11), cross-region copy to Osaka (P12), RDS Proxy.
 - KDDI Message Cast (Twilio is wired meanwhile), Amazon IVS station pipeline (T2), Yamato B2 (T14).
 - Secrets are passed as ECS environment variables; moving them to Secrets Manager references is a follow-up.
 - Seed key access per service: worker Encrypt + Decrypt, admin Encrypt only, web none (T11 least privilege).

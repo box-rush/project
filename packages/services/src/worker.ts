@@ -9,6 +9,7 @@ import { executeRefund } from "./refunds";
 import { expireUnpaidShipment, forcedCharge, forcedShipmentSweepAll, storageReminder } from "./warehouse";
 import { couponExpiryNotices } from "./coupons";
 import { dispatchNotifications } from "./notifications";
+import { reportError } from "./errorReporter";
 
 export const handlers: Record<string, JobHandler> = {
   "lottery.closeSale": (ctx, p) => closeSale(ctx, String(p.lotteryId)),
@@ -60,6 +61,7 @@ async function step(name: string, fn: () => Promise<unknown>) {
     return await fn();
   } catch (e) {
     console.error(`[worker] ${name} failed`, e);
+    reportError(e, { step: name });
     return undefined;
   }
 }
@@ -89,6 +91,8 @@ export async function tick(ctx: Ctx) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { createRuntime, closeRuntime } = await import("./runtime");
+  const { initErrorTracking, flushErrorTracking } = await import("./observability");
+  initErrorTracking("worker");
   const { writeFileSync } = await import("node:fs");
   const ctx = createRuntime();
   let lastReconcile = 0;
@@ -151,12 +155,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       busy = (await tick(ctx)).busy;
     } catch (e) {
       console.error("[worker]", e);
+      reportError(e, { step: "tick" });
     }
     heartbeat();
     if (!busy) await pause(2000);
   }
   await maintenance;
   await closeRuntime();
+  await flushErrorTracking();
   console.log("[worker] stopped");
   process.exit(0);
 }

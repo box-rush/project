@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: fileURLToPath(new URL("../..", import.meta.url)),
   transpilePackages: ["@boxrush/core", "@boxrush/db", "@boxrush/services"],
-  serverExternalPackages: ["pg", "stripe"],
+  serverExternalPackages: ["pg", "stripe", "@sentry/node"],
   poweredByHeader: false,
 };
 

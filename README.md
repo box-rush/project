@@ -90,5 +90,6 @@ app for the database and job-queue lag; error / not-found pages.
 AWS Tokyo via SST v3: see [infra/README.md](infra/README.md) (stack, secrets, migrations, DB login roles, known gaps).
 
 ## Not in this repository yet
-The integrations marked above, Sentry / CloudWatch / WAF / Turnstile (T17, T18), the separate randomness account.
+The integrations marked above, WAF / Turnstile (T18), the separate randomness account. Monitoring (T17: CloudWatch
+alarms → SNS, Sentry with personal data stripped) is in `infra/monitoring.ts` and `services/src/observability.ts`.
 Legal texts are placeholders (legal items on hold, 2026-10-15).
