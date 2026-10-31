@@ -20,7 +20,7 @@ jobs:
       DATABASE_URL: postgres://boxrush:boxrush@localhost:5432/boxrush
       PAYMENT_PROVIDER: mock
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -45,7 +45,7 @@ jobs:
   infra:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -62,7 +62,7 @@ jobs:
       matrix:
         target: [web, admin, worker]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: docker build ${{ matrix.target }}
         run: docker buildx build -f infra/Dockerfile --target ${{ matrix.target }} -t boxrush-${{ matrix.target }}:ci --load .
