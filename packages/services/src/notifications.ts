@@ -1,4 +1,4 @@
-import { and, eq, isNull, notifications, sql, users, type DbOrTx } from "@boxrush/db";
+import { and, asc, eq, isNull, lte, notifications, or, sql, users, type DbOrTx } from "@boxrush/db";
 import type { Ctx } from "./context";
 
 /**
@@ -117,27 +117,49 @@ export async function notify(tx: DbOrTx, userId: string, kind: NotificationKind,
     .onConflictDoNothing({ target: notifications.dedupeKey });
 }
 
+/**
+ * Outbox delivery. Each notification is handled on its own: a failing address or a provider outage backs off
+ * (1 min doubling to 6 h) and never blocks the rest of the queue. Email is the guaranteed channel and is marked
+ * sent the moment it goes out; LINE is best effort on top, so a LINE failure never re-sends the email.
+ */
 export async function dispatchNotifications(ctx: Ctx, limit = 100) {
+  const now = ctx.now();
   const pending = await ctx.db
     .select({ n: notifications, email: users.email, locale: users.locale, line: users.lineUserId, notifyLine: users.notifyLine, deleted: users.deletedAt })
     .from(notifications)
     .innerJoin(users, eq(users.id, notifications.userId))
-    .where(isNull(notifications.emailSentAt))
+    .where(and(isNull(notifications.emailSentAt), or(isNull(notifications.nextSendAt), lte(notifications.nextSendAt, now))))
+    .orderBy(asc(notifications.createdAt))
     .limit(limit);
+  let failed = 0;
   for (const row of pending) {
     if (row.deleted) {
       await ctx.db.update(notifications).set({ emailSentAt: ctx.now() }).where(eq(notifications.id, row.n.id));
       continue;
     }
     const { subject, body } = renderNotification(row.locale, row.n.kind as NotificationKind, row.n.params as Params);
-    await ctx.email.send(row.email, subject, `${body}\n\n${ctx.webBaseUrl}/notifications`);
-    let lineSentAt: Date | null = null;
-    if (row.line && (row.n.fulfilment || row.notifyLine)) {
-      await ctx.line.push(row.line, `${subject}\n${body}`);
-      lineSentAt = ctx.now();
+    try {
+      await ctx.email.send(row.email, subject, `${body}\n\n${ctx.webBaseUrl}/notifications`);
+    } catch (e) {
+      failed++;
+      const attempts = row.n.sendAttempts + 1;
+      await ctx.db
+        .update(notifications)
+        .set({ sendAttempts: attempts, nextSendAt: new Date(ctx.now().getTime() + 60_000 * Math.min(360, 2 ** (attempts - 1))), lastSendError: e instanceof Error ? e.message.slice(0, 500) : String(e) })
+        .where(eq(notifications.id, row.n.id));
+      continue;
     }
-    await ctx.db.update(notifications).set({ emailSentAt: ctx.now(), lineSentAt }).where(and(eq(notifications.id, row.n.id), isNull(notifications.emailSentAt)));
+    await ctx.db.update(notifications).set({ emailSentAt: ctx.now(), lastSendError: null }).where(and(eq(notifications.id, row.n.id), isNull(notifications.emailSentAt)));
+    if (row.line && (row.n.fulfilment || row.notifyLine)) {
+      try {
+        await ctx.line.push(row.line, `${subject}\n${body}`);
+        await ctx.db.update(notifications).set({ lineSentAt: ctx.now() }).where(eq(notifications.id, row.n.id));
+      } catch (e) {
+        console.warn("[notify] LINE push failed (email was delivered)", row.n.id, e instanceof Error ? e.message : e);
+      }
+    }
   }
+  if (failed) console.warn(`[alert] ${failed} notification(s) failed to send; retrying with backoff`);
   return pending.length;
 }
 

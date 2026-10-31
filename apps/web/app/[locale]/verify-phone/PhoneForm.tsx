@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
-import { checkPhone } from "@/lib/actions/account";
+import { checkPhone, testModeSmsCode } from "@/lib/actions/account";
 import { useRouter } from "@/i18n/routing";
 import { ErrorText } from "@/components/ErrorText";
 
@@ -12,13 +12,14 @@ const toE164 = (raw: string) => {
   return d.startsWith("0") ? `+81${d.slice(1)}` : `+${d}`;
 };
 
-export function PhoneForm({ next, already, onboarded }: { next: string; already: boolean; onboarded: boolean }) {
+export function PhoneForm({ next, already, onboarded, testMode = false }: { next: string; already: boolean; onboarded: boolean; testMode?: boolean }) {
   const t = useTranslations("auth");
   const router = useRouter();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [testCode, setTestCode] = useState<string | null>(null);
   const go = () => router.push(onboarded ? next : `/welcome?next=${encodeURIComponent(next)}`);
   if (already) {
     return (
@@ -43,6 +44,10 @@ export function PhoneForm({ next, already, onboarded }: { next: string; already:
           const r = await authClient.phoneNumber.sendOtp({ phoneNumber: toE164(phone) });
           if (r.error) return setErr(r.error.status === 429 ? "TOO_MANY_ATTEMPTS" : "UNEXPECTED");
           setSent(true);
+          if (testMode) {
+            const tc = await testModeSmsCode(toE164(phone));
+            setTestCode(tc.ok ? tc.data : null);
+          }
         }}
       >
         {t("sendCode")}
@@ -50,6 +55,11 @@ export function PhoneForm({ next, already, onboarded }: { next: string; already:
       {sent && (
         <>
           <p className="text-sm text-trust">{t("codeSent")}</p>
+          {testMode && testCode && (
+            <p className="rounded border border-dashed border-warning p-2 text-sm text-warning" data-testid="test-sms-code">
+              {t("testModeCode")} <span className="font-mono font-bold tracking-widest">{testCode}</span>
+            </p>
+          )}
           <label className="block text-sm">
             {t("code")}
             <input className="input mt-1 font-mono tracking-widest" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />

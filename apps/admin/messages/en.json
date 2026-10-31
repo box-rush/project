@@ -1,6 +1,7 @@
 {
   "app": {
-    "title": "BOX Rush Admin"
+    "title": "BOX Rush Admin",
+    "testMode": "Test environment — simulated payments, no SMS, test data only."
   },
   "common": {
     "month": "Month",
@@ -138,7 +139,9 @@
     "aborted": "This lottery was aborted; full refunds are being issued",
     "openingFinished": "Opening finished; sent to attribution",
     "deviceRegistered": "Device registered",
-    "uploaded": "Uploaded"
+    "uploaded": "Uploaded",
+    "staffCreated": "Staff added",
+    "staffReset": "Reset done"
   },
   "errors": {
     "UNKNOWN": "Something went wrong ({code})",
@@ -237,7 +240,10 @@
     "DOCUMENT_REQUIRED": "Choose a file",
     "DOCUMENT_TOO_LARGE": "Files up to {max}",
     "DOCUMENT_TYPE": "Only PDF, JPEG, PNG and WebP",
-    "DOCUMENT_TAMPERED": "The file does not match its record"
+    "DOCUMENT_TAMPERED": "The file does not match its record",
+    "INVALID_STAFF": "Check the name, e-mail and roles",
+    "MERCHANT_REQUIRED": "The merchant role needs a merchant",
+    "CANNOT_DISABLE_SELF": "You cannot disable yourself"
   },
   "issues": {
     "SCHEMA": "Missing or invalid input ({field})",
@@ -273,7 +279,11 @@
       "edit": "Edit",
       "view": "View",
       "rejected": "Rejected: {reason}",
-      "noDrawNotice": "Merchants cannot run the draw, upload recordings or edit after listing — the platform performs and records these."
+      "noDrawNotice": "Merchants cannot run the draw, upload recordings or edit after listing — the platform performs and records these.",
+      "pagination": "Pages",
+      "pageOf": "Page {page} of {pages} ({total})",
+      "prev": "Previous",
+      "next": "Next"
     }
   },
   "wizard": {
@@ -878,7 +888,9 @@
       "PAID": "Paid",
       "REJECTED": "Rejected"
     },
-    "incidentHelp": "Caps: standard ¥3,000, insured ¥30,000 (F9.5). How compensation reaches the customer is not decided yet (§10.14)."
+    "incidentHelp": "Caps: standard ¥3,000, insured ¥30,000 (F9.5). How compensation reaches the customer is not decided yet (§10.14).",
+    "searchCode": "Find parcel no.",
+    "search": "Search"
   },
   "tickets": {
     "title": "Tickets",
@@ -1029,7 +1041,15 @@
     "notEnrolled": "Not enrolled",
     "state": "State",
     "active": "Active",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "merchant": "Merchant (merchant role only)",
+    "newStaff": "Add staff",
+    "createStaff": "Add and issue a one-time password",
+    "tempPassword": "One-time password (shown only here; pass it on securely; two-factor is registered at first login)",
+    "reset": "Reset password and two-factor",
+    "resetConfirm": "Reset the password and two-factor of this person and end their sessions?",
+    "disable": "Disable",
+    "disableConfirm": "Disable this person and sign them out now?"
   },
   "monitoring": {
     "title": "Monitoring",
@@ -1094,5 +1114,14 @@
       "SHIPPING": "Storage & shipping",
       "ACCOUNT": "Account"
     }
+  },
+  "errorPage": {
+    "title": "This screen could not be shown",
+    "body": "Your last action may not have been saved. Check the state, then try again.",
+    "retry": "Reload",
+    "home": "Home",
+    "code": "Error id: {digest}",
+    "notFoundTitle": "Screen not found",
+    "notFoundBody": "Check the URL."
   }
 }

@@ -55,16 +55,18 @@ export function StationConsole({
   const [offName, setOffName] = useState("");
   const [offRarity, setOffRarity] = useState("");
   const [manualTs, setManualTs] = useState<string>("");
-  const [now, setNow] = useState(() => Date.now());
+  // null until mounted: the server and the first client render must produce the same text (no hydration mismatch)
+  const [now, setNow] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setNow(Date.now());
     const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
   }, []);
 
   const opening = lottery.status === "OPENING";
-  const elapsed = session ? Math.max(0, Math.floor((now - new Date(session.startedAt).getTime()) / 1000)) : 0;
+  const elapsed = session && now !== null ? Math.max(0, Math.floor((now - new Date(session.startedAt).getTime()) / 1000)) : 0;
   /** Recording clock = seconds since the session started; the operator may override it (e.g. after a clock skew). */
   const ts = () => (manualTs.trim() !== "" && Number.isFinite(Number(manualTs)) ? Number(manualTs) : elapsed);
   const packs = markers.filter((m) => m.kind === "PACK_OPEN").length;

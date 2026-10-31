@@ -10,6 +10,7 @@ export default $config({
     };
   },
   async run() {
-    await import("./infra/stack");
+    const { outputs } = await import("./infra/stack");
+    return outputs;
   },
 });

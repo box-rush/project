@@ -228,10 +228,10 @@ test("full chain through the UI: intake → listing → sale → draw → openin
 
     const shipment = (await q<{ id: string; code: string }>("SELECT id, code FROM shipments WHERE user_id = (SELECT id FROM users WHERE email = $1) ORDER BY requested_at DESC LIMIT 1", [email]))[0]!;
     await expect.poll(() => shipStatus(shipment.id)).toBe("REQUESTED");
-    await wh.goto("/ops/warehouse?tab=req");
+    await wh.goto(`/ops/warehouse?tab=req&q=${shipment.code}`);
     await wh.getByRole("row", { name: new RegExp(`#${shipment.code}(?!\\d)`) }).getByRole("button", { name: "ピッキング開始" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("PICKING");
-    await wh.goto("/ops/warehouse?tab=pack");
+    await wh.goto(`/ops/warehouse?tab=pack&q=${shipment.code}`);
     const scan = wh.getByLabel("スキャン（Enterで1件）");
     await scan.fill("NOT-IN-PARCEL");
     await scan.press("Enter");
@@ -242,14 +242,14 @@ test("full chain through the UI: intake → listing → sale → draw → openin
     }
     await wh.getByRole("button", { name: "梱包完了" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("PACKED");
-    await wh.goto("/ops/warehouse?tab=pack");
+    await wh.goto(`/ops/warehouse?tab=pack&q=${shipment.code}`);
     const tracking = `1234-5678-90${i}${i}`;
     await wh.getByLabel("追跡番号").fill(tracking);
     await wh.getByRole("button", { name: "出荷する" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("SHIPPED");
     await u.goto(`/shipments/${shipment.id}`);
     await expect(u.getByText(tracking)).toBeVisible(); // F9.4
-    await wh.goto("/ops/warehouse?tab=out");
+    await wh.goto(`/ops/warehouse?tab=out&q=${shipment.code}`);
     await wh.getByRole("row", { name: new RegExp(`#${shipment.code}(?!\\d)`) }).getByRole("button", { name: "配達完了にする" }).click();
     await expect.poll(() => shipStatus(shipment.id)).toBe("DELIVERED");
     await u.context().close();

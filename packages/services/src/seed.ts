@@ -1,12 +1,14 @@
 /**
- * Local / staging seed. Never run against production (no production personal data in any environment, §10.12).
- * Creates staff (dev TOTP secret printed), a demo consumer, master data, inventory and lotteries in every state.
+ * Local / staging-test-mode seed. Never run against production (no production personal data in any environment,
+ * §10.12). Creates staff (shared test TOTP secret printed), a demo consumer, master data, inventory and lotteries in
+ * every state. In AWS it is the Seed task of a test-mode stage (infra/stack.ts): it then encrypts server seeds with
+ * the stage's KMS key and uses the stage's pseudonym key, so the deployed worker can run the draws.
  */
 import { hashPassword as baHash } from "better-auth/crypto";
 import { addDays, addHours, fromJst, type LotteryConfig } from "@boxrush/core";
 import { authAccounts, banners, checklistTemplates, createDb, eq, experiments, faqs, merchants, products, sql, staff, users } from "@boxrush/db";
 import {
-  ConsoleMessaging, LocalAesKeyProvider, MockPaymentProvider, RandomnessService, addMarker, approveLottery, enterCard, finalizeAttribution,
+  ConsoleMessaging, MockPaymentProvider, RandomnessService, seedKeyProvider, isTestMode, assertTestModeAllowed, addMarker, approveLottery, enterCard, finalizeAttribution,
   finishOpening, handlePaymentEvent, handlers, hashPassword, holdSlots, ingestSegment, putAway, receiveUnit, runDueJobs, saveDraft,
   startOpening, submitForReview, closeSale, upsertAddress, addPaymentMethod, createVoucherCode, grantCoupon, type Ctx, type StaffPrincipal,
 } from "./index";
@@ -36,6 +38,9 @@ function checklistFor(s: (typeof SETS)[number]) {
 }
 
 async function main() {
+  // a deployed environment may only be seeded in test mode, and never production
+  assertTestModeAllowed();
+  if (process.env.NODE_ENV === "production" && !isTestMode()) throw new Error("refusing to seed: deployed environments are seeded only in test mode (BOXRUSH_TEST_MODE=1)");
   await runMigrations(url);
   const { db, pool } = createDb(url);
   const existing = await db.select().from(merchants).limit(1);
@@ -48,8 +53,8 @@ async function main() {
   const payments = new MockPaymentProvider();
   const msg = new ConsoleMessaging(true);
   const ctx: Ctx = {
-    db, now: () => new Date(clockNow), payments, rng: new RandomnessService(db, new LocalAesKeyProvider(process.env.RNG_SEED_KEY ?? "00".repeat(32))),
-    email: msg, line: msg, sms: msg, pseudonymKey: process.env.PSEUDONYM_KEY ?? "11".repeat(32), webBaseUrl: "http://localhost:3000",
+    db, now: () => new Date(clockNow), payments, rng: new RandomnessService(db, seedKeyProvider()),
+    email: msg, line: msg, sms: msg, pseudonymKey: process.env.PSEUDONYM_KEY ?? "11".repeat(32), webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
   };
   const drain = async () => { for (let i = 0; i < 10; i++) { const r = await runDueJobs(ctx, handlers, 200); if (!r.done && !r.failed) break; } };
 

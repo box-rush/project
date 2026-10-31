@@ -57,7 +57,8 @@ test("X7: cloud-only outage continues; both paths down freezes the station until
   await rev.goto("/ops/review");
   await rev.getByTestId("pending-aborts").getByRole("link", { name: "確認する" }).click();
   await rev.getByRole("button", { name: "中止を確認する（別の担当者）" }).click();
-  await expect.poll(() => lotteryStatus(lotteryId)).toBe("ABORTED");
+  // ABORTED, or already REFUNDED when the refunds finish before the first poll (the refund check follows)
+  await expect.poll(() => lotteryStatus(lotteryId)).toMatch(/^(ABORTED|REFUNDED)$/);
   await expect.poll(async () => (await q("SELECT 1 FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.lottery_id = $1 AND r.status = 'SUCCEEDED'", [lotteryId])).length, { timeout: 60_000 }).toBe(2);
 
   // the buyer sees the abort, the refund and a notification
@@ -75,7 +76,8 @@ test("X4: a seal anomaly before opening aborts and refunds; the reason is public
   const st = await staffPage(browser, "station@boxrush.local");
   await st.goto(`/station/${lotteryId}`);
   await st.getByRole("button", { name: "封印異常のため中止" }).click();
-  await expect.poll(() => lotteryStatus(lotteryId)).toBe("ABORTED");
+  // ABORTED, or already REFUNDED when the refunds finish before the first poll (the refund check follows)
+  await expect.poll(() => lotteryStatus(lotteryId)).toMatch(/^(ABORTED|REFUNDED)$/);
   expect((await q<{ r: string }>("SELECT abort_reason AS r FROM lotteries WHERE id = $1", [lotteryId]))[0]!.r).toBe("SEAL_ANOMALY");
   const pub = await (await browser.newContext({ locale: "ja-JP" })).newPage();
   await pub.goto(`/l/${code}`);

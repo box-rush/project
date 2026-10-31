@@ -69,7 +69,8 @@
     "you": "你",
     "slot": "位 #{n}",
     "cards": "{n} 张",
-    "jst": "日本时间"
+    "jst": "日本时间",
+    "testModeBanner": "测试环境 — 支付为测试模式，不会真实扣款；不发送短信，验证码显示在页面上。"
   },
   "home": {
     "title": "开盒中・销售中的场次",
@@ -87,7 +88,10 @@
     "how3": "在约定时刻全程录像开盒",
     "how4": "卡片保管在仓库中，集中发货",
     "noLotteries": "目前没有销售中的场次",
-    "recent": "最近的结果"
+    "recent": "最近的结果",
+    "pages": "分页",
+    "prev": "上一页",
+    "more": "查看更多"
   },
   "lottery": {
     "subject": "待开盒的盒子",
@@ -511,7 +515,8 @@
     "verifyCode": "认证",
     "codeSent": "已发送 SMS",
     "verified": "已认证",
-    "termsAgree": "同意利用规约与隐私政策并注册"
+    "termsAgree": "同意利用规约与隐私政策并注册",
+    "testModeCode": "测试环境：不发送短信。验证码："
   },
   "errors": {
     "UNEXPECTED": "发生错误。请稍后再试。",
@@ -550,6 +555,16 @@
     "VALIDATION": "请检查输入内容",
     "PHONE_TAKEN": "该手机号码已被其他账号使用",
     "AUTH_FAILED": "邮箱地址或密码不正确",
-    "TOO_MANY_ATTEMPTS": "尝试次数过多，请稍后再试"
+    "TOO_MANY_ATTEMPTS": "尝试次数过多，请稍后再试",
+    "HUMAN_CHECK_FAILED": "验证未完成，请重试"
+  },
+  "errorPage": {
+    "title": "无法显示页面",
+    "body": "请稍后再试。支付、抽选与开盒记录均已保存。",
+    "retry": "重新加载",
+    "home": "返回首页",
+    "code": "错误编号：{digest}",
+    "notFoundTitle": "找不到页面",
+    "notFoundBody": "请确认网址是否正确。"
   }
 }

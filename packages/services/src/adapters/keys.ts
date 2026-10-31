@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { awsClientConfig } from "./aws";
 
 /**
  * T11: server seeds exist only encrypted at rest. Production = AWS KMS in the isolated randomness account,
@@ -42,7 +43,7 @@ export class KmsKeyProvider implements SeedKeyProvider {
   ) {}
   static async create(keyId: string) {
     const { KMSClient } = await import("@aws-sdk/client-kms");
-    return new KmsKeyProvider(keyId, new KMSClient({ region: process.env.AWS_REGION ?? "ap-northeast-1" }));
+    return new KmsKeyProvider(keyId, new KMSClient(awsClientConfig()));
   }
   async encrypt(plaintext: string) {
     const { EncryptCommand } = await import("@aws-sdk/client-kms");

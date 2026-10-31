@@ -144,10 +144,29 @@ export async function expireUnpaidShipment(ctx: Ctx, shipmentId: string) {
 }
 
 /** O13 pick list: consolidated per shipment (F22.2), with insured packing flag (F22.3). */
-export async function pickList(ctx: Ctx) {
-  const ships = await ctx.db.select().from(shipments).where(inArray(shipments.status, ["REQUESTED", "PICKING", "PACKED"])).orderBy(asc(shipments.requestedAt));
+/**
+ * Warehouse work queue: the oldest `perStatus` parcels of each open status (first in, first out), with their items,
+ * plus the full count per status for the tab badges. Bounded so the page stays fast however large the backlog.
+ */
+export async function pickList(ctx: Ctx, opts: { perStatus?: number; code?: number } = {}) {
+  const open = ["REQUESTED", "PICKING", "PACKED"] as const;
+  const perStatus = opts.perStatus ?? 100;
+  // `code`: find one parcel in a backlog (the number on its label / the customer's inquiry)
+  const byCode = opts.code !== undefined && Number.isInteger(opts.code) ? eq(shipments.code, opts.code) : undefined;
+  const [lists, counts] = await Promise.all([
+    Promise.all(
+      open.map((st) => ctx.db.select().from(shipments).where(and(eq(shipments.status, st), byCode)).orderBy(asc(shipments.requestedAt)).limit(perStatus)),
+    ),
+    ctx.db.execute<{ status: string; n: number }>(sql`SELECT status, count(*)::int AS n FROM shipments WHERE status IN ('REQUESTED','PICKING','PACKED') GROUP BY status`),
+  ]);
+  const ships = lists.flat();
   const items = ships.length ? await ctx.db.select().from(collectionItems).where(inArray(collectionItems.shipmentId, ships.map((s) => s.id))) : [];
-  return ships.map((s) => ({ shipment: s, items: items.filter((i) => i.shipmentId === s.id) }));
+  const byShipment = new Map<string, (typeof items)[number][]>();
+  for (const i of items) byShipment.set(i.shipmentId!, [...(byShipment.get(i.shipmentId!) ?? []), i]);
+  return {
+    parcels: ships.map((s) => ({ shipment: s, items: byShipment.get(s.id) ?? [] })),
+    counts: Object.fromEntries(open.map((st) => [st, counts.rows.find((r) => r.status === st)?.n ?? 0])) as Record<(typeof open)[number], number>,
+  };
 }
 
 /** Scan-driven picking: every item barcode must be scanned before the parcel can be packed. */
@@ -276,52 +295,83 @@ export async function storageReminder(ctx: Ctx) {
  * - charge fails → notify, retry 3× within 7 days, then the platform advances the fee, ships, and suspends purchases
  * - no address → keep storing for free, notify monthly, suspend purchases until an address is added
  */
-export async function forcedShipmentSweep(ctx: Ctx) {
+/**
+ * One page of the X13 sweep, users in id order after `after`. Returns the cursor for the next page (null when done).
+ * Paged so a large backlog never holds the worker for long, and each user is handled on its own: one user's conflict
+ * (e.g. they requested shipping at the same moment) is retried next sweep and never stops the others.
+ */
+export async function forcedShipmentSweep(ctx: Ctx, opts: { after?: string; limit?: number } = {}): Promise<{ next: string | null; processed: number; failed: number }> {
   const now = ctx.now();
+  const limit = opts.limit ?? 200;
   const due = await ctx.db.execute<{ user_id: string }>(
-    sql`SELECT DISTINCT user_id FROM collection_items WHERE state = 'STORED' AND shipment_id IS NULL AND frozen = false AND free_storage_until <= ${now}`,
+    sql`SELECT DISTINCT user_id FROM collection_items WHERE state = 'STORED' AND shipment_id IS NULL AND frozen = false AND free_storage_until <= ${now}
+        AND user_id > ${opts.after ?? ""} ORDER BY user_id LIMIT ${limit}`,
   );
+  let failed = 0;
   for (const { user_id: userId } of due.rows) {
-    const [user] = await ctx.db.select().from(users).where(eq(users.id, userId));
-    if (!user || user.deletedAt) continue;
-    const [addr] = await ctx.db.select().from(addresses).where(and(eq(addresses.userId, userId), isNull(addresses.deletedAt))).orderBy(sql`is_default DESC`).limit(1);
-    if (!addr) {
-      await ctx.db.transaction(async (tx) => {
-        await tx.update(users).set({ purchaseSuspendedReason: "ADDRESS_REQUIRED" }).where(and(eq(users.id, userId), isNull(users.purchaseSuspendedReason)));
-        await notify(tx, userId, "ADDRESS_REQUIRED", {}, `addr-req:${userId}:${now.toISOString().slice(0, 7)}`, now);
-        await audit(tx, SYSTEM, "forced.no_address", "user", userId, {}, now);
-      });
-      continue;
+    try {
+      await forcedShipmentFor(ctx, userId, now);
+    } catch (e) {
+      failed++;
+      console.error(`[forcedShipmentSweep] ${userId}`, e instanceof Error ? e.message : e);
     }
-    const items = await ctx.db.select().from(collectionItems).where(and(eq(collectionItems.userId, userId), eq(collectionItems.state, "STORED"), isNull(collectionItems.shipmentId), eq(collectionItems.frozen, false)));
-    const coupon = (
-      await ctx.db.select().from(coupons).where(and(eq(coupons.userId, userId), isNull(coupons.usedAt), isNull(coupons.voidedAt))).orderBy(asc(coupons.expiresAt))
-    ).find((c) => c.expiresAt > now);
-    const quote = quoteShipment(items, coupon, now);
-    const slotCount = new Set(items.map((i) => `${i.lotteryId}:${i.slotNumber}`)).size;
-    const [s] = await ctx.db.transaction(async (tx) => {
-      const r = await tx
-        .insert(shipments)
-        .values({ userId, addressSnapshot: addr, itemCount: items.length, slotCount, insured: quote.insured, fee: quote.fee, payable: quote.payable, couponId: quote.couponApplied ? coupon!.id : null, forced: true, status: quote.payable > 0 ? "AWAITING_PAYMENT" : "REQUESTED", requestedAt: now })
-        .returning();
-      // guarded: a user request may have claimed these items or the coupon since they were read
-      const claimed = await tx
-        .update(collectionItems)
-        .set({ shipmentId: r[0]!.id, ...(quote.payable === 0 ? { state: "SHIPPING" as const } : {}) })
-        .where(and(inArray(collectionItems.id, items.map((i) => i.id)), isNull(collectionItems.shipmentId), eq(collectionItems.state, "STORED")))
-        .returning({ id: collectionItems.id });
-      if (claimed.length !== items.length) throw new Error("forced shipment: items changed concurrently, retry next sweep");
-      if (quote.couponApplied) {
-        const used = await tx.update(coupons).set({ usedAt: now, usedShipmentId: r[0]!.id }).where(and(eq(coupons.id, coupon!.id), isNull(coupons.usedAt))).returning();
-        if (used.length !== 1) throw new Error("forced shipment: coupon used concurrently, retry next sweep");
-      }
-      await notify(tx, userId, "FORCED_SHIPMENT", { count: items.length, fee: formatYen(quote.payable) }, `forced:${r[0]!.id}`, now);
-      await audit(tx, SYSTEM, "forced.create", "shipment", r[0]!.id, { items: items.length, payable: quote.payable }, now);
-      if (quote.payable > 0) await enqueue(tx, "shipment.forcedCharge", `forced-charge:${r[0]!.id}:1`, now, { shipmentId: r[0]!.id });
-      return r;
-    });
-    void s;
   }
+  return { next: due.rows.length === limit ? due.rows[due.rows.length - 1]!.user_id : null, processed: due.rows.length, failed };
+}
+
+/** Every page of the sweep (the daily run). `shouldStop` lets a shutting-down worker leave between pages. */
+export async function forcedShipmentSweepAll(ctx: Ctx, shouldStop: () => boolean = () => false) {
+  let after: string | undefined;
+  let processed = 0;
+  let failed = 0;
+  do {
+    const r = await forcedShipmentSweep(ctx, { after });
+    processed += r.processed;
+    failed += r.failed;
+    after = r.next ?? undefined;
+  } while (after && !shouldStop());
+  return { processed, failed };
+}
+
+async function forcedShipmentFor(ctx: Ctx, userId: string, now: Date) {
+  const [user] = await ctx.db.select().from(users).where(eq(users.id, userId));
+  if (!user || user.deletedAt) return;
+  const [addr] = await ctx.db.select().from(addresses).where(and(eq(addresses.userId, userId), isNull(addresses.deletedAt))).orderBy(sql`is_default DESC`).limit(1);
+  if (!addr) {
+    await ctx.db.transaction(async (tx) => {
+      await tx.update(users).set({ purchaseSuspendedReason: "ADDRESS_REQUIRED" }).where(and(eq(users.id, userId), isNull(users.purchaseSuspendedReason)));
+      await notify(tx, userId, "ADDRESS_REQUIRED", {}, `addr-req:${userId}:${now.toISOString().slice(0, 7)}`, now);
+      await audit(tx, SYSTEM, "forced.no_address", "user", userId, {}, now);
+    });
+    return;
+  }
+  const items = await ctx.db.select().from(collectionItems).where(and(eq(collectionItems.userId, userId), eq(collectionItems.state, "STORED"), isNull(collectionItems.shipmentId), eq(collectionItems.frozen, false)));
+  const coupon = (
+    await ctx.db.select().from(coupons).where(and(eq(coupons.userId, userId), isNull(coupons.usedAt), isNull(coupons.voidedAt))).orderBy(asc(coupons.expiresAt))
+  ).find((c) => c.expiresAt > now);
+  const quote = quoteShipment(items, coupon, now);
+  const slotCount = new Set(items.map((i) => `${i.lotteryId}:${i.slotNumber}`)).size;
+  const [s] = await ctx.db.transaction(async (tx) => {
+    const r = await tx
+      .insert(shipments)
+      .values({ userId, addressSnapshot: addr, itemCount: items.length, slotCount, insured: quote.insured, fee: quote.fee, payable: quote.payable, couponId: quote.couponApplied ? coupon!.id : null, forced: true, status: quote.payable > 0 ? "AWAITING_PAYMENT" : "REQUESTED", requestedAt: now })
+      .returning();
+    // guarded: a user request may have claimed these items or the coupon since they were read
+    const claimed = await tx
+      .update(collectionItems)
+      .set({ shipmentId: r[0]!.id, ...(quote.payable === 0 ? { state: "SHIPPING" as const } : {}) })
+      .where(and(inArray(collectionItems.id, items.map((i) => i.id)), isNull(collectionItems.shipmentId), eq(collectionItems.state, "STORED")))
+      .returning({ id: collectionItems.id });
+    if (claimed.length !== items.length) throw new Error("forced shipment: items changed concurrently, retry next sweep");
+    if (quote.couponApplied) {
+      const used = await tx.update(coupons).set({ usedAt: now, usedShipmentId: r[0]!.id }).where(and(eq(coupons.id, coupon!.id), isNull(coupons.usedAt))).returning();
+      if (used.length !== 1) throw new Error("forced shipment: coupon used concurrently, retry next sweep");
+    }
+    await notify(tx, userId, "FORCED_SHIPMENT", { count: items.length, fee: formatYen(quote.payable) }, `forced:${r[0]!.id}`, now);
+    await audit(tx, SYSTEM, "forced.create", "shipment", r[0]!.id, { items: items.length, payable: quote.payable }, now);
+    if (quote.payable > 0) await enqueue(tx, "shipment.forcedCharge", `forced-charge:${r[0]!.id}:1`, now, { shipmentId: r[0]!.id });
+    return r;
+  });
 }
 
 export async function forcedCharge(ctx: Ctx, shipmentId: string) {

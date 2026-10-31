@@ -8,13 +8,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./migrate": "./src/migrate.ts"
+    "./migrate": "./src/migrate.ts",
+    "./loginRoles": "./src/loginRoles.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
-    "test": "echo 'db: covered by services integration tests'"
+    "test": "echo 'db: covered by services integration tests'",
+    "login-roles": "tsx src/loginRoles.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.0",

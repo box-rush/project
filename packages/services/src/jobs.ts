@@ -1,13 +1,30 @@
 import { and, eq, jobs, lte, sql, type DbOrTx } from "@boxrush/db";
 import type { Ctx } from "./context";
+import { reportError } from "./errorReporter";
 
 /**
  * T13: PostgreSQL-backed job queue. The state change and its follow-up job are written in one transaction;
  * keys make jobs idempotent; a per-minute sweep (`reconcile`) re-creates anything that was missed.
  */
 export async function enqueue(tx: DbOrTx, kind: string, key: string, runAt: Date, payload: Record<string, unknown> = {}) {
-  await tx.insert(jobs).values({ kind, key, runAt, payload }).onConflictDoNothing({ target: jobs.key });
+  await tx.insert(jobs).values({ kind, key, runAt, payload, priority: jobPriority(kind) }).onConflictDoNothing({ target: jobs.key });
 }
+
+/**
+ * Claim order. A burst of refunds (a large abort, a month-end of failed lotteries) must never delay what buyers are
+ * waiting on right now: the draw after a sell-out, the sale close, releasing a held slot.
+ */
+const PRIORITY: Record<string, number> = {
+  "lottery.draw": 0,
+  "lottery.closeSale": 0,
+  "order.expireHold": 0,
+  "lottery.openingOverdue": 1,
+  "refund.execute": 2,
+  "shipment.expireUnpaid": 2,
+  "shipment.forcedCharge": 3,
+  "lottery.checkRefunded": 4,
+};
+export const jobPriority = (kind: string) => PRIORITY[kind] ?? 5;
 
 export type JobHandler = (ctx: Ctx, payload: Record<string, unknown>) => Promise<void>;
 
@@ -19,7 +36,7 @@ export async function runDueJobs(ctx: Ctx, handlers: Record<string, JobHandler>,
     const claimed = await ctx.db.transaction(async (tx) => {
       const rows = (
         await tx.execute<{ id: number; kind: string; payload: Record<string, unknown>; attempts: number }>(
-          sql`SELECT id, kind, payload, attempts FROM jobs WHERE status = 'PENDING' AND run_at <= ${now} ORDER BY run_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
+          sql`SELECT id, kind, payload, attempts FROM jobs WHERE status = 'PENDING' AND run_at <= ${now} ORDER BY priority, run_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
         )
       ).rows;
       const job = rows[0];
@@ -39,6 +56,8 @@ export async function runDueJobs(ctx: Ctx, handlers: Record<string, JobHandler>,
       // Never give up: refunds, draws and sale closes must eventually happen. Back off up to 30 minutes and
       // let monitoring (stuckJobs) alert on repeated failures.
       const attempts = claimed.attempts + 1;
+      // one-off failures retry quietly; a job failing again and again is worth a human look
+      if (attempts >= 3) reportError(e, { job: claimed.kind, attempts });
       await ctx.db
         .update(jobs)
         .set({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import pg from "pg";
 import { createDb, sql } from "@boxrush/db";
+import { loginRolesSql } from "@boxrush/db/loginRoles";
 import { verifyCardDraw } from "@boxrush/core";
 import {
   ConsoleMessaging, LocalAesKeyProvider, MockPaymentProvider, RandomnessService, buildOpeningRecord, getLottery, archiveAuditBatch, LocalDirStore, verifyAuditChain, type Ctx,
@@ -14,19 +14,17 @@ import { join } from "node:path";
 const BASE = process.env.TEST_DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush_test";
 const as = (user: string, pw: string) => BASE.replace(/\/\/[^@]+@/, `//${user}:${pw}@`);
 
-/** Production wiring (infra/db-login-roles.sql): the app and the randomness service each use a restricted login. */
+/** Production wiring (packages/db/sql/login-roles.sql): the app and the randomness service each use a restricted login. */
 describe("deployment roles: the whole flow works without the database owner", () => {
   it("app login runs listing → sale → draw → record; rng login commits and draws; app cannot read seeds", async () => {
     const admin = new pg.Client({ connectionString: BASE });
     await admin.connect();
-    const script = readFileSync(new URL("../../../infra/db-login-roles.sql", import.meta.url), "utf8")
-      .replace(":app_password", "'app-test'")
-      .replace(":rng_password", "'rng-test'");
+    const script = loginRolesSql("app-test", "rng-'test");
     await admin.query(script);
     await admin.end();
 
     const app = createDb(as("boxrush_app_login", "app-test"), { max: 10 }).db;
-    const rngDb = createDb(as("boxrush_rng_login", "rng-test"), { max: 2 }).db;
+    const rngDb = createDb(as("boxrush_rng_login", encodeURIComponent("rng-'test")), { max: 2 }).db;
     const clock = new Clock(JST(2026, 11, 20, 12));
     const payments = new MockPaymentProvider();
     const msg = new ConsoleMessaging(true);

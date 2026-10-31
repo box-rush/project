@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { errorForLog } from "@boxrush/services";
 import { currentStaff, type Staff } from "./session";
 import type { ActionResult } from "./result";
 
@@ -34,7 +35,7 @@ export async function act<T>(fn: (staff: Staff) => Promise<T>, opts: { revalidat
     if (err?.name === "IllegalTransitionError" || e?.constructor?.name === "IllegalTransitionError") return { ok: false, code: "ILLEGAL_TRANSITION" };
     const pg = (e as { code?: string; cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code;
     if (pg === "23505") return { ok: false, code: "DUPLICATE" };
-    console.error("[admin action]", e);
+    console.error("[admin action]", errorForLog(e));
     return { ok: false, code: "UNEXPECTED" };
   }
 }

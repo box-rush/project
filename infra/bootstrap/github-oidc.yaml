@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Box Rush: lets GitHub Actions deploy one stage of box-rush/project with short-lived credentials (OIDC), no access
+  keys. Only workflow runs that use the named GitHub environment can assume the role.
+  aws cloudformation deploy --template-file github-oidc.yaml --stack-name boxrush-github-deploy-staging --capabilities CAPABILITY_NAMED_IAM
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: box-rush/project
+  GitHubEnvironment:
+    Type: String
+    Default: staging
+    Description: GitHub environment (Settings → Environments) whose workflow runs may deploy
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: '"false" when this AWS account already has the token.actions.githubusercontent.com provider'
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidc:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1, 1c58a3a8518e8759bf075b76b750d4f2df264fcd]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub boxrush-github-deploy-${GitHubEnvironment}
+      MaxSessionDuration: 10800 # a first deploy (RDS, CloudFront) can take 30+ minutes
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateProvider
+                - !Ref GitHubOidc
+                - !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:environment:${GitHubEnvironment}
+      # SST creates VPCs, RDS, ECS, CloudFront, WAF, IAM roles, KMS keys, … — it needs broad rights in this account.
+      # Keep this role to a staging-only account (AWS Organizations member) and protect the GitHub environment.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+Outputs:
+  RoleArn:
+    Description: GitHub → Settings → Environments → staging → Variables → AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn

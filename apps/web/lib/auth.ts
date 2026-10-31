@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { phoneNumber } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
-import { authAccounts, authSessions, authVerifications, users } from "@boxrush/db";
+import { authAccounts, authRateLimits, authSessions, authVerifications, users } from "@boxrush/db";
 import { afterPhoneVerified, isPhoneOnHold, recordEvent } from "@boxrush/services";
 
 const JP_MOBILE_E164 = /^\+81[789]0\d{8}$/;
@@ -25,12 +25,31 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-only-secret-change-me-dev-only-secret",
   database: drizzleAdapter(getCtx().db, {
     provider: "pg",
-    schema: { user: users, session: authSessions, account: authAccounts, verification: authVerifications },
+    schema: { user: users, session: authSessions, account: authAccounts, verification: authVerifications, rateLimit: authRateLimits },
   }),
-  advanced: { database: { generateId: () => crypto.randomUUID() } },
+  advanced: {
+    database: { generateId: () => crypto.randomUUID() },
+    // T18: behind CloudFront the viewer function writes the client IP into this header (X-Forwarded-For then has two
+    // entries, which Better Auth will not guess from — it would fall back to ONE bucket shared by every user)
+    ipAddress: { ipAddressHeaders: ["x-boxrush-client-ip", "x-forwarded-for"] },
+    useSecureCookies: (process.env.BETTER_AUTH_URL ?? "").startsWith("https://"),
+    defaultCookieAttributes: { httpOnly: true, sameSite: "lax" },
+  },
   emailAndPassword: { enabled: true, minPasswordLength: 8 },
   socialProviders: social,
-  rateLimit: { enabled: true, window: 60, max: 30 },
+  // T18: counted in PostgreSQL so the limits hold across every web task and survive deploys. Built-in stricter rules
+  // apply to sign-in / sign-up (3 per 10 s per IP); SMS sending is limited further (cost and abuse).
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 30,
+    storage: "database",
+    modelName: "rateLimit",
+    customRules: {
+      "/phone-number/send-otp": { window: 600, max: 5 },
+      "/phone-number/verify": { window: 600, max: 10 },
+    },
+  },
   plugins: [
     phoneNumber({
       // Server-side, for every phone endpoint (the UI check is only a convenience):

@@ -76,3 +76,54 @@ test("X7: admin switches the unconfirmed-report policy on the monitoring page; t
     await c.end();
   }
 });
+
+test("T18 staff management: admin adds a station operator (one-time password, TOTP at first login), then disables them", async ({ browser, page }) => {
+  const pg = await import("pg");
+  const c = new pg.default.Client({ connectionString: process.env.DATABASE_URL ?? "postgres://boxrush:boxrush@localhost:5432/boxrush" });
+  await c.connect();
+  try {
+    await page.goto(`${ADMIN}/ops/audit`);
+    if (new URL(page.url()).pathname.startsWith("/login")) {
+      await page.getByLabel("メールアドレス").fill("admin@boxrush.local");
+      await page.getByLabel("パスワード").fill("boxrush-dev");
+      await page.getByRole("button", { name: "次へ" }).click();
+      await page.getByLabel("認証コード（6桁）").fill(totp("JBSWY3DPEHPK3PXP", new Date()));
+      await page.getByRole("button", { name: "ログイン" }).click();
+      await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+      await page.goto(`${ADMIN}/ops/audit`);
+    }
+    page.on("dialog", (d) => d.accept());
+    const email = `station-${Date.now().toString(36)}@boxrush.local`;
+    const form = page.locator("form").filter({ has: page.getByRole("button", { name: "追加して一時パスワードを発行" }) });
+    await form.getByLabel("氏名").fill("開封担当（E2E）");
+    await form.getByLabel("メールアドレス").fill(email);
+    await form.getByLabel("開封", { exact: true }).check();
+    await form.getByRole("button", { name: "追加して一時パスワードを発行" }).click();
+    const password = (await page.getByTestId("temp-password").innerText()).trim();
+    expect(password).toHaveLength(20);
+    expect((await c.query("SELECT password_hash FROM staff WHERE email = $1", [email])).rows[0].password_hash).not.toContain(password);
+
+    // first login: password, then register TOTP from the shown secret
+    const p2 = await (await browser.newContext({ baseURL: ADMIN })).newPage();
+    await p2.goto("/login");
+    await p2.getByLabel("メールアドレス").fill(email);
+    await p2.getByLabel("パスワード").fill(password);
+    await p2.getByRole("button", { name: "次へ" }).click();
+    await expect(p2.getByText("認証アプリを登録してください")).toBeVisible();
+    const secret = (await c.query("SELECT totp_secret FROM staff WHERE email = $1", [email])).rows[0].totp_secret as string;
+    await p2.getByLabel("認証コード（6桁）").fill(totp(secret, new Date()));
+    await p2.getByRole("button", { name: "ログイン" }).click();
+    await p2.waitForURL((u) => !u.pathname.startsWith("/login"));
+    await p2.goto("/station");
+    await expect(p2.getByRole("heading", { name: "開封ステーション" })).toBeVisible();
+
+    // disabled → signed out at once
+    await page.reload();
+    await page.getByRole("row", { name: new RegExp(email) }).getByRole("button", { name: "無効にする" }).click();
+    await expect.poll(async () => (await c.query("SELECT disabled_at FROM staff WHERE email = $1", [email])).rows[0].disabled_at).not.toBeNull();
+    await p2.goto("/station");
+    await expect(p2).toHaveURL(/\/login/);
+  } finally {
+    await c.end();
+  }
+});

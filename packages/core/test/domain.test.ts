@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
+  jstMonthRange,
   LOTTERY_STATUSES,
   TRANSITIONS,
   assertTransition,
@@ -138,5 +139,13 @@ describe("formatting (§9.2)", () => {
     expect(formatYen(12800)).toBe("¥12,800");
     expect(formatJst(fromJst(2026, 9, 28, 20, 0))).toBe("9/28(月) 20:00");
     expect(formatCountdown((2 * 86400 + 3 * 3600 + 14 * 60 + 5) * 1000)).toBe("2日 03:14:05");
+  });
+});
+
+describe("JST month ranges (finance / channel reports)", () => {
+  it("cover exactly the JST calendar month, including the year end", () => {
+    expect(jstMonthRange("2026-11")).toEqual({ from: new Date("2026-10-31T15:00:00Z"), to: new Date("2026-11-30T15:00:00Z") });
+    expect(jstMonthRange("2026-12")).toEqual({ from: new Date("2026-11-30T15:00:00Z"), to: new Date("2026-12-31T15:00:00Z") });
+    expect(() => jstMonthRange("2026-1")).toThrow();
   });
 });

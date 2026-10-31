@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { awsClientConfig } from "./adapters/aws";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -21,7 +22,7 @@ export interface DocumentStore {
 export class S3DocumentStore implements DocumentStore {
   constructor(
     private readonly bucket: string,
-    private readonly client: Pick<S3Client, "send"> = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" }),
+    private readonly client: Pick<S3Client, "send"> = new S3Client(awsClientConfig()),
   ) {}
   async put(key: string, body: Uint8Array, contentType: string, sha256: string) {
     await this.client.send(

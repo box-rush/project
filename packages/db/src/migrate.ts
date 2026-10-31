@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createDb } from "./index";
 
 export async function runMigrations(url?: string) {
-  const { db, pool } = createDb(url, { max: 1 });
+  const { db, pool } = createDb(url, { max: 1, statementTimeoutMs: 0, applicationName: "boxrush-migrate" });
   await migrate(db, { migrationsFolder: fileURLToPath(new URL("../migrations", import.meta.url)) });
   await pool.end();
 }

@@ -37,6 +37,31 @@ two-person attribution → shipping → COMPLETED), `exceptions` covers X4 / X6 
 `consumer-functions` covers limits, codes, appeals → arbitration, leaving, settings and the info pages.
 Exception tests start from `packages/services/src/e2eFixture.ts` (a READY lottery opening in minutes; dev only).
 
+## Performance and stability
+Measured on a dev container (4 shared vCPU, PostgreSQL 16 local) with `tools/perf/scale.sql` (≈ a year at launch
+scale: 100k users, 5k lotteries / 100k slots, 1.2M collection items, 80k shipments, 500k notifications, 1M events):
+```bash
+pnpm db:reset && psql "$DATABASE_URL" -v scale=1 -f tools/perf/scale.sql   # dev databases only
+pnpm --filter @boxrush/web build && pnpm e2e                                 # all E2E pass at this volume
+node tools/perf/load.mjs --users 50 --seconds 30 / /l/L5014 /verify/L0001 /api/records/L0001 /help
+```
+| | before | after |
+|---|---|---|
+| home page, one request | 140 ms, 453 KB | 60 ms, 155 KB |
+| mixed public pages, one Node process, 50 users | 29 req/s | 47 req/s (no errors) |
+| `/api/records/{code}` (frozen) | — | ~290 req/s per process; CDN-cacheable for a day |
+| draw after sell-out, behind a 3,000-refund backlog | waited for the backlog | claimed first (job priority) |
+
+One web task (0.5 vCPU) serves roughly 20–25 mixed page req/s; Web scales 2–8 tasks. Server-side rendering is the
+limit, not the database: the slowest public query is now under 10 ms at this volume.
+
+Stability measures: DB pool with connect / statement (30 s) / idle-in-transaction timeouts and an `error` listener;
+bounded timeouts on Stripe, SES, S3, KMS, LINE and Twilio calls; job priorities and parallel lanes; maintenance
+(reconcile, daily sweeps, audit archive) beside the job lanes, never in front of them; the forced-shipment sweep is
+paged and isolates per-user failures; the notification outbox backs off per message; graceful SIGTERM shutdown and a
+heartbeat-based container health check for the worker; `/api/health` (liveness) on both apps, `?deep=1` on the admin
+app for the database and job-queue lag; error / not-found pages.
+
 ## What is enforced where
 | Invariant | Enforcement |
 |---|---|
@@ -65,5 +90,6 @@ Exception tests start from `packages/services/src/e2eFixture.ts` (a READY lotter
 AWS Tokyo via SST v3: see [infra/README.md](infra/README.md) (stack, secrets, migrations, DB login roles, known gaps).
 
 ## Not in this repository yet
-The integrations marked above, Sentry / CloudWatch / WAF / Turnstile (T17, T18), the separate randomness account.
+The integrations marked above, WAF / Turnstile (T18), the separate randomness account. Monitoring (T17: CloudWatch
+alarms → SNS, Sentry with personal data stripped) is in `infra/monitoring.ts` and `services/src/observability.ts`.
 Legal texts are placeholders (legal items on hold, 2026-10-15).

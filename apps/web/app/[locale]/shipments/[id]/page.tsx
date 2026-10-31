@@ -26,7 +26,7 @@ export default async function ShipmentDetail({ params }: { params: Promise<{ loc
   const a = s.addressSnapshot as { name: string; postalCode: string; prefecture: string; city: string; line1: string; line2?: string | null };
   const idx = STEPS.indexOf(s.status as (typeof STEPS)[number]);
   // F9.9: the fee is paid here (Stripe). Unpaid requests are released after 30 minutes.
-  const pk = process.env.PAYMENT_PROVIDER === "stripe" ? process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY : undefined;
+  const pk = process.env.PAYMENT_PROVIDER === "stripe" ? process.env.STRIPE_PUBLISHABLE_KEY : undefined;
   const pay = s.status === "AWAITING_PAYMENT" && !s.forced && pk ? await paymentForShipment(ctx, user.id, s.id) : null;
   return (
     <div className="mx-auto max-w-xl space-y-4">

@@ -69,7 +69,8 @@
     "you": "You",
     "slot": "Slot #{n}",
     "cards": "Cards: {n}",
-    "jst": "Japan time"
+    "jst": "Japan time",
+    "testModeBanner": "Test environment — payments are simulated and nothing is charged; no SMS is sent, codes are shown on screen."
   },
   "home": {
     "title": "Rounds now opening or on sale",
@@ -87,7 +88,10 @@
     "how3": "The box is opened at the set time, fully recorded",
     "how4": "Cards are kept in your Collection and shipped together",
     "noLotteries": "No rounds are on sale right now",
-    "recent": "Recent results"
+    "recent": "Recent results",
+    "pages": "Pages",
+    "prev": "Previous",
+    "more": "Show more"
   },
   "lottery": {
     "subject": "Box to be opened",
@@ -511,7 +515,8 @@
     "verifyCode": "Verify",
     "codeSent": "SMS sent",
     "verified": "Verified",
-    "termsAgree": "I agree to the Terms of Use and Privacy Policy and sign up"
+    "termsAgree": "I agree to the Terms of Use and Privacy Policy and sign up",
+    "testModeCode": "Test environment: no SMS is sent. Your code:"
   },
   "errors": {
     "UNEXPECTED": "An error occurred. Please try again after a while.",
@@ -550,6 +555,16 @@
     "VALIDATION": "Please check what you entered",
     "PHONE_TAKEN": "This phone number is used by another account",
     "AUTH_FAILED": "The email address or password is incorrect",
-    "TOO_MANY_ATTEMPTS": "Too many attempts. Please wait a moment and try again"
+    "TOO_MANY_ATTEMPTS": "Too many attempts. Please wait a moment and try again",
+    "HUMAN_CHECK_FAILED": "The check did not complete. Please try again"
+  },
+  "errorPage": {
+    "title": "This page could not be shown",
+    "body": "Please try again in a moment. Payments, draws and opening records are saved.",
+    "retry": "Reload",
+    "home": "Home",
+    "code": "Error id: {digest}",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "Please check the URL."
   }
 }

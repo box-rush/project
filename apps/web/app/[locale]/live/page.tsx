@@ -11,7 +11,7 @@ export default async function LivePage({ params }: { params: Promise<{ locale: s
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations();
-  const list = await listLotteries(getCtx(), { statuses: ["OPENING", "ATTRIBUTING", "ATTRIBUTED", "FULFILLING", "COMPLETED"], sort: "opening", limit: 20 });
+  const list = await listLotteries(getCtx(), { statuses: ["OPENING", "ATTRIBUTING", "ATTRIBUTED", "FULFILLING", "COMPLETED"], sort: "recent", limit: 20 });
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <PageTitle>{t("nav.live")}</PageTitle>

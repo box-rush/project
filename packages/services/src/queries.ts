@@ -1,4 +1,4 @@
-import { and, asc, banners, desc, eq, faqs, inArray, lotteries, merchants, notifications, orders, refunds, slots, sql, subjectReplacements } from "@boxrush/db";
+import { and, asc, banners, desc, eq, faqs, inArray, lotteries, lte, merchants, notifications, orders, refunds, slots, sql, subjectReplacements } from "@boxrush/db";
 import type { Ctx } from "./context";
 import { fail } from "./errors";
 
@@ -7,8 +7,40 @@ export const PUBLIC_LIST_STATUSES = ["ON_SALE", "LOCKED", "READY", "OPENING", "A
 
 export type LotteryCard = Awaited<ReturnType<typeof listLotteries>>[number];
 
-export async function listLotteries(ctx: Ctx, opts: { category?: string; sort?: "recommended" | "opening" | "remaining" | "price"; statuses?: readonly string[]; limit?: number } = {}) {
+/**
+ * F3.1 / F3.2 / F3.5 listing. Sorting and paging happen in SQL, so "recommended" or "price" order is right across
+ * every lottery, not just the first page; only the snapshot fields a card shows are read (not the full checklist).
+ */
+export async function listLotteries(
+  ctx: Ctx,
+  opts: { category?: string; sort?: "recommended" | "opening" | "recent" | "remaining" | "price"; statuses?: readonly string[]; limit?: number; offset?: number; maxPrice?: number } = {},
+) {
   const statuses = opts.statuses ?? ["ON_SALE", "LOCKED", "READY", "OPENING", "ATTRIBUTING"];
+  const sold = sql<number>`(SELECT count(*)::int FROM slots s WHERE s.lottery_id = ${lotteries.id} AND s.state = 'SOLD')`;
+  const order = {
+    remaining: [sql`(${lotteries.totalSlots} - ${sold})::float / ${lotteries.totalSlots}`, asc(lotteries.openingAt)],
+    price: [asc(lotteries.slotPrice), asc(lotteries.openingAt)],
+    opening: [asc(lotteries.openingAt)],
+    recent: [desc(lotteries.openingAt)],
+    recommended: [sql`(${lotteries.status} = 'ON_SALE') DESC`, desc(lotteries.featured), asc(lotteries.openingAt)],
+  }[opts.sort ?? "recommended"];
+  // step 1: order and page on cheap columns only; step 2: card details for just this page (the snapshot JSON is
+  // large, and reading it for every candidate before the sort dominated the query at volume)
+  const page = await ctx.db
+    .select({ id: lotteries.id })
+    .from(lotteries)
+    .where(
+      and(
+        inArray(lotteries.status, statuses as never[]),
+        opts.category ? eq(lotteries.category, opts.category) : undefined,
+        opts.maxPrice !== undefined ? lte(lotteries.slotPrice, opts.maxPrice) : undefined,
+      ),
+    )
+    .orderBy(...order)
+    .limit(opts.limit ?? 24)
+    .offset(opts.offset ?? 0);
+  if (!page.length) return [];
+  const rank = new Map(page.map((r, i) => [r.id, i]));
   const rows = await ctx.db
     .select({
       id: lotteries.id,
@@ -21,39 +53,24 @@ export async function listLotteries(ctx: Ctx, opts: { category?: string; sort?: 
       saleEndsAt: lotteries.saleEndsAt,
       openingAt: lotteries.openingAt,
       featured: lotteries.featured,
-      snapshot: lotteries.snapshot,
+      subject: sql<{ sealedUnit: string; quantity: number; retailPrice: number; series: string; maker: string }[] | null>`${lotteries.snapshot}->'subject'`,
+      photo: sql<string | null>`${lotteries.snapshot}#>>'{subjectUnits,0,sealPhotoUrls,0}'`,
+      guaranteeRule: sql<string | null>`${lotteries.snapshot}#>>'{guarantee,rule}'`,
       selfOperated: merchants.selfOperated,
       merchantName: merchants.name,
-      sold: sql<number>`(SELECT count(*)::int FROM slots s WHERE s.lottery_id = ${lotteries.id} AND s.state = 'SOLD')`,
+      sold,
       held: sql<number>`(SELECT count(*)::int FROM slots s WHERE s.lottery_id = ${lotteries.id} AND s.state = 'HELD' AND s.held_until > ${ctx.now()})`,
     })
     .from(lotteries)
     .innerJoin(merchants, eq(merchants.id, lotteries.merchantId))
-    .where(and(inArray(lotteries.status, statuses as never[]), opts.category ? eq(lotteries.category, opts.category) : undefined))
-    .orderBy(asc(lotteries.openingAt))
-    .limit(opts.limit ?? 100);
-  const list = rows.map((r) => {
-    const snap = r.snapshot as { subject: { sealedUnit: string; quantity: number; retailPrice: number; series: string; maker: string }[]; subjectUnits: { sealPhotoUrls: string[] }[]; guarantee: { rule: string } } | null;
-    return {
-      ...r,
-      snapshot: undefined,
-      remaining: r.totalSlots - r.sold,
-      subject: snap?.subject ?? [],
-      photo: snap?.subjectUnits?.[0]?.sealPhotoUrls?.[0] ?? null,
-      guaranteeRule: snap?.guarantee.rule ?? null,
-      retailTotal: (snap?.subject ?? []).reduce((a, s) => a + s.retailPrice * s.quantity, 0),
-    };
-  });
-  switch (opts.sort) {
-    case "remaining":
-      return list.sort((a, b) => a.remaining / a.totalSlots - b.remaining / b.totalSlots);
-    case "price":
-      return list.sort((a, b) => a.slotPrice - b.slotPrice);
-    case "opening":
-      return list;
-    default:
-      return list.sort((a, b) => Number(b.status === "ON_SALE") - Number(a.status === "ON_SALE") || Number(b.featured) - Number(a.featured) || a.openingAt.getTime() - b.openingAt.getTime());
-  }
+    .where(inArray(lotteries.id, page.map((r) => r.id)));
+  rows.sort((x, y) => rank.get(x.id)! - rank.get(y.id)!);
+  return rows.map((r) => ({
+    ...r,
+    remaining: r.totalSlots - r.sold,
+    subject: r.subject ?? [],
+    retailTotal: (r.subject ?? []).reduce((a, s) => a + s.retailPrice * s.quantity, 0),
+  }));
 }
 
 export async function findLotteryByCode(ctx: Ctx, code: string) {
@@ -108,7 +125,8 @@ export async function myOrders(ctx: Ctx, userId: string) {
     .from(orders)
     .innerJoin(lotteries, eq(lotteries.id, orders.lotteryId))
     .where(and(eq(orders.userId, userId), inArray(orders.status, ["PAID", "REFUND_PENDING", "REFUNDED", "LATE_PAYMENT_REFUNDED", "PENDING"])))
-    .orderBy(desc(orders.createdAt));
+    .orderBy(desc(orders.createdAt))
+    .limit(200);
   const rs = os.length ? await ctx.db.select().from(refunds).where(inArray(refunds.orderId, os.map((o) => o.order.id))) : [];
   return os.map((o) => ({ ...o, refunds: rs.filter((r) => r.orderId === o.order.id) }));
 }

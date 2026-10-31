@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { awsClientConfig } from "./adapters/aws";
 import { dirname, join } from "node:path";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { H } from "@boxrush/core";
@@ -18,7 +19,7 @@ export class S3ObjectLockStore implements ArchiveStore {
   constructor(
     private readonly bucket: string,
     private readonly retainYears = 10,
-    private readonly client: Pick<S3Client, "send"> = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" }),
+    private readonly client: Pick<S3Client, "send"> = new S3Client(awsClientConfig()),
   ) {}
   async put(key: string, body: string, sha256: string) {
     const until = new Date();

@@ -42,10 +42,14 @@ const isAdmin = (p: StaffPrincipal) => p.roles.includes("ADMIN");
 // ───────────── merchant (B03–B06) ─────────────
 
 /** B03: lotteries of the staff member's own merchant (ADMIN without a merchant sees all). */
-export async function merchantLotteries(ctx: Ctx, p: StaffPrincipal) {
+/** B03: newest first, one page at a time (a busy merchant runs thousands of lotteries a year). */
+export async function merchantLotteries(ctx: Ctx, p: StaffPrincipal, opts: { page?: number; pageSize?: number } = {}) {
   requireRole(p, "MERCHANT");
   const where = p.merchantId ? eq(lotteries.merchantId, p.merchantId) : isAdmin(p) ? undefined : fail("FORBIDDEN");
-  return ctx.db
+  const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 100));
+  const page = Math.max(0, Math.floor(opts.page ?? 0));
+  const [counted] = await ctx.db.select({ total: sql<number>`count(*)::int` }).from(lotteries).where(where);
+  const rows = await ctx.db
     .select({
       id: lotteries.id,
       code: lotteries.code,
@@ -61,7 +65,10 @@ export async function merchantLotteries(ctx: Ctx, p: StaffPrincipal) {
     })
     .from(lotteries)
     .where(where)
-    .orderBy(desc(lotteries.createdAt));
+    .orderBy(desc(lotteries.createdAt), desc(lotteries.code))
+    .limit(pageSize)
+    .offset(page * pageSize);
+  return { rows, total: counted?.total ?? 0, page, pageSize };
 }
 
 /** A lottery as seen by staff; merchant-only staff may only open their own merchant's lotteries. */
@@ -209,7 +216,7 @@ export async function listIntakeBookings(ctx: Ctx, p: StaffPrincipal) {
     .limit(200);
 }
 
-export async function warehouseOverview(ctx: Ctx, p: StaffPrincipal) {
+export async function warehouseOverview(ctx: Ctx, p: StaffPrincipal, opts: { code?: number } = {}) {
   requireRole(p, "WAREHOUSE");
   const toPutAway = await ctx.db
     .select({
@@ -234,7 +241,7 @@ export async function warehouseOverview(ctx: Ctx, p: StaffPrincipal) {
   const shipped = await ctx.db
     .select()
     .from(shipments)
-    .where(inArray(shipments.status, ["SHIPPED", "DELIVERED"]))
+    .where(and(inArray(shipments.status, ["SHIPPED", "DELIVERED"]), opts.code !== undefined ? eq(shipments.code, opts.code) : undefined))
     .orderBy(desc(shipments.shippedAt))
     .limit(100);
   const k = await ctx.db.execute<{ avg: string | null; n: string }>(

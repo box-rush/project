@@ -6,6 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
   index,
@@ -16,6 +17,7 @@ import {
   pgTable,
   primaryKey,
   serial,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -102,7 +104,7 @@ export const authSessions = pgTable("auth_sessions", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-});
+}, (t) => [index("auth_sessions_user_idx").on(t.userId)]);
 
 export const authAccounts = pgTable("auth_accounts", {
   id: text("id").primaryKey(),
@@ -120,7 +122,7 @@ export const authAccounts = pgTable("auth_accounts", {
   password: text("password"),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [index("auth_accounts_user_idx").on(t.userId), index("auth_accounts_provider_idx").on(t.providerId, t.accountId)]);
 
 export const authVerifications = pgTable("auth_verifications", {
   id: text("id").primaryKey(),
@@ -129,7 +131,7 @@ export const authVerifications = pgTable("auth_verifications", {
   expiresAt: ts("expires_at").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [index("auth_verifications_identifier_idx").on(t.identifier)]);
 
 /** T10: when a number moves to a new account, the old binding is retained 90 days for manual review. */
 export const retiredPhoneNumbers = pgTable("retired_phone_numbers", {
@@ -413,7 +415,7 @@ export const lotteries = pgTable(
     createdAt: createdAt(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
-  (t) => [index("lotteries_status_idx").on(t.status)],
+  (t) => [index("lotteries_status_idx").on(t.status), index("lotteries_merchant_idx").on(t.merchantId, t.createdAt), index("lotteries_opening_idx").on(t.openingAt)],
 );
 
 /** §6.2.2 Slot + Holding. One row per slot; holding fields are filled when sold. */
@@ -439,7 +441,7 @@ export const slots = pgTable(
     /** X10: fulfilment frozen during arbitration */
     frozen: boolean("frozen").notNull().default(false),
   },
-  (t) => [uniqueIndex("slots_lottery_number_uq").on(t.lotteryId, t.number), index("slots_owner_idx").on(t.ownerUserId)],
+  (t) => [uniqueIndex("slots_lottery_number_uq").on(t.lotteryId, t.number), index("slots_owner_idx").on(t.ownerUserId), index("slots_order_idx").on(t.orderId)],
 );
 
 export const orders = pgTable(
@@ -467,7 +469,7 @@ export const orders = pgTable(
     experimentArms: jsonb("experiment_arms"),
     createdAt: createdAt(),
   },
-  (t) => [index("orders_user_idx").on(t.userId), index("orders_lottery_idx").on(t.lotteryId)],
+  (t) => [index("orders_user_idx").on(t.userId), index("orders_lottery_idx").on(t.lotteryId), index("orders_payment_ref_idx").on(t.paymentRef), index("orders_pending_hold_idx").on(t.heldUntil).where(sql`status = 'PENDING'`)],
 );
 
 /** Idempotency for PSP webhooks (T12: "幂等键"). */
@@ -494,7 +496,7 @@ export const refunds = pgTable("refunds", {
   lastError: text("last_error"),
   createdAt: createdAt(),
   completedAt: ts("completed_at"),
-});
+}, (t) => [index("refunds_order_idx").on(t.orderId), index("refunds_pending_idx").on(t.createdAt).where(sql`status = 'PENDING'`)]);
 
 // ───────────────────────── opening & recording (M21, SV4) ─────────────────────────
 export const openingSessions = pgTable("opening_sessions", {
@@ -614,7 +616,7 @@ export const collectionItems = pgTable(
     frozen: boolean("frozen").notNull().default(false),
     createdAt: createdAt(),
   },
-  (t) => [index("collection_user_idx").on(t.userId, t.state)],
+  (t) => [index("collection_user_idx").on(t.userId, t.state), index("collection_shipment_idx").on(t.shipmentId), index("collection_lottery_slot_idx").on(t.lotteryId, t.slotNumber), index("collection_storage_due_idx").on(t.freeStorageUntil).where(sql`state = 'STORED' AND shipment_id IS NULL`)],
 );
 
 export const shipments = pgTable("shipments", {
@@ -642,7 +644,7 @@ export const shipments = pgTable("shipments", {
   requestedAt: ts("requested_at").notNull().defaultNow(),
   shippedAt: ts("shipped_at"),
   deliveredAt: ts("delivered_at"),
-});
+}, (t) => [index("shipments_status_idx").on(t.status, t.requestedAt), index("shipments_user_idx").on(t.userId, t.requestedAt)]);
 
 /** CP1–CP7. Coupons are free grants only; no purchase, transfer or cash value. */
 export const voucherCodes = pgTable("voucher_codes", {
@@ -674,7 +676,7 @@ export const coupons = pgTable(
     issuedBy: text("issued_by"),
   },
   // CP6: one redemption per account per code
-  (t) => [uniqueIndex("coupons_user_code_uq").on(t.userId, t.voucherCode)],
+  (t) => [uniqueIndex("coupons_user_code_uq").on(t.userId, t.voucherCode), index("coupons_issued_idx").on(t.issuedAt), index("coupons_expiry_idx").on(t.expiresAt).where(sql`used_at IS NULL AND voided_at IS NULL`)],
 );
 
 // ───────────────────────── notifications (M11) ─────────────────────────
@@ -692,10 +694,14 @@ export const notifications = pgTable(
     readAt: ts("read_at"),
     emailSentAt: ts("email_sent_at"),
     lineSentAt: ts("line_sent_at"),
+    /** delivery retries: a failing address or provider outage backs off instead of blocking the outbox */
+    sendAttempts: smallint("send_attempts").notNull().default(0),
+    nextSendAt: ts("next_send_at"),
+    lastSendError: text("last_send_error"),
     dedupeKey: text("dedupe_key").unique(),
     createdAt: createdAt(),
   },
-  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt), index("notifications_unsent_idx").on(t.createdAt).where(sql`email_sent_at IS NULL`)],
 );
 
 // ───────────────────────── support & arbitration (M12, M23) ─────────────────────────
@@ -717,7 +723,7 @@ export const tickets = pgTable("tickets", {
   assigneeId: text("assignee_id"),
   createdAt: createdAt(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [index("tickets_user_idx").on(t.userId, t.createdAt)]);
 
 export const ticketMessages = pgTable("ticket_messages", {
   id: id(),
@@ -778,7 +784,7 @@ export const auditLog = pgTable(
     prevHash: text("prev_hash").notNull().default(""),
     hash: text("hash").notNull().default(""),
   },
-  (t) => [index("audit_entity_idx").on(t.entity, t.entityId)],
+  (t) => [index("audit_entity_idx").on(t.entity, t.entityId), index("audit_action_at_idx").on(t.action, t.at)],
 );
 
 /** T7: each hourly batch of the audit log exported to immutable storage (S3 Object Lock in production). */
@@ -859,6 +865,21 @@ export const stationDevices = pgTable("station_devices", {
   revokedAt: ts("revoked_at"),
 });
 
+/** T18 fixed-window rate limits shared by every app instance (key = purpose:subject, e.g. hold:user:<id>). */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: ts("window_start").notNull(),
+  count: integer("count").notNull(),
+});
+
+/** Better Auth's own rate limiter, stored in the database so the limit holds across web tasks and deploys (T18). */
+export const authRateLimits = pgTable("auth_rate_limits", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
+
 /** T13 job queue: state change and its next job are written in the same transaction. */
 export const jobs = pgTable(
   "jobs",
@@ -869,13 +890,15 @@ export const jobs = pgTable(
     key: text("key").notNull().unique(),
     payload: jsonb("payload").notNull().default({}),
     runAt: ts("run_at").notNull(),
+    /** 0 = time-critical (draw, sale close, hold expiry) … 5 = background; claimed in (priority, run_at) order */
+    priority: smallint("priority").notNull().default(5),
     status: text("status").notNull().default("PENDING"), // PENDING | RUNNING | DONE | FAILED
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     lockedAt: ts("locked_at"),
     finishedAt: ts("finished_at"),
   },
-  (t) => [index("jobs_due_idx").on(t.status, t.runAt)],
+  (t) => [index("jobs_due_idx").on(t.priority, t.runAt).where(sql`status = 'PENDING'`)],
 );
 
 /** T16 first-party events (no ad pixels). */

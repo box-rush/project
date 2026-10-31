@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { auditPage, staffList } from "@boxrush/services";
+import { auditPage, listMerchants, staffList } from "@boxrush/services";
 import { ActionForm } from "@/components/ActionForm";
 import { Hash, JstFull, PageHeader } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
 import { verifyChainAction } from "../actions";
+import { CreateStaff, StaffRowActions } from "./StaffAdmin";
 
 /** O17 / T7: append-only audit log with hash chain; read-only here. */
 export default async function Audit({ searchParams }: { searchParams: Promise<{ entity?: string; entityId?: string; before?: string }> }) {
@@ -14,6 +15,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
   const sp = await searchParams;
   const before = sp.before && /^\d+$/.test(sp.before) ? Number(sp.before) : undefined;
   const [page, people] = await Promise.all([auditPage(ctx(), staff, { entity: sp.entity || undefined, entityId: sp.entityId || undefined, before }), staffList(ctx(), staff)]);
+  const merchantRows = await listMerchants(ctx(), staff);
   const names = new Map(people.map((p) => [p.id, p.name]));
   const qs = (b: number) => `?${new URLSearchParams({ ...(sp.entity ? { entity: sp.entity } : {}), ...(sp.entityId ? { entityId: sp.entityId } : {}), before: String(b) })}`;
   return (
@@ -87,6 +89,10 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
 
       <section className="card mt-6 overflow-x-auto p-0">
         <h2 className="h2 px-4 pt-3">{t("staff")}</h2>
+        <div className="border-b border-line px-4 pb-4">
+          <h3 className="label mt-2">{t("newStaff")}</h3>
+          <CreateStaff merchants={merchantRows.map((m) => ({ id: m.id, name: m.name }))} />
+        </div>
         <table className="tbl">
           <thead>
             <tr>
@@ -95,6 +101,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
               <th>{t("roles")}</th>
               <th>{t("mfa")}</th>
               <th>{t("state")}</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -111,6 +118,7 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
                 </td>
                 <td>{p.totpEnrolledAt ? <span className="badge badge-trust">{t("enrolled")}</span> : <span className="badge badge-warning">{t("notEnrolled")}</span>}</td>
                 <td>{p.disabledAt ? <span className="badge">{t("disabled")}</span> : <span className="badge badge-trust">{t("active")}</span>}</td>
+                <td>{p.disabledAt ? null : <StaffRowActions staffId={p.id} self={p.id === staff.id} />}</td>
               </tr>
             ))}
           </tbody>
