@@ -17,7 +17,8 @@ export async function adminCreateStaff(ctx: Ctx, p: StaffPrincipal, input: { ema
   requireRole(p, "ADMIN");
   const email = input.email.trim().toLowerCase();
   const roles = [...new Set(input.roles)] as StaffRole[];
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !input.name.trim() || roles.length === 0 || roles.some((r) => !STAFF_ROLES.includes(r))) fail("INVALID_STAFF");
+  // length first, and a pattern with no ambiguous repetition (linear time on any input)
+  if (email.length > 254 || !/^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/.test(email) || !input.name.trim() || roles.length === 0 || roles.some((r) => !STAFF_ROLES.includes(r))) fail("INVALID_STAFF");
   let merchantId = input.merchantId ?? null;
   if (roles.includes("MERCHANT") && !merchantId) fail("MERCHANT_REQUIRED");
   if (!roles.includes("MERCHANT") && !roles.includes("ADMIN")) merchantId = null;

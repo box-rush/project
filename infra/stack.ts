@@ -264,11 +264,11 @@ const worker = new sst.aws.Service("Worker", {
   // the reconcile loop and archive assume a single worker
   scaling: { min: 1, max: 1 },
   permissions: permissions.worker,
-  environment: { ...common, ...rngEnv, WORKER_HEARTBEAT_FILE: "/tmp/boxrush-worker-heartbeat" },
+  environment: { ...common, ...rngEnv, WORKER_HEARTBEAT_FILE: "/home/node/.boxrush-worker-heartbeat" },
   ssm: { ...commonSecrets, ...rngSecrets },
   // the loop touches the heartbeat file every few seconds; a wedged worker is replaced (SIGTERM lets it finish jobs in hand)
   health: {
-    command: ["CMD-SHELL", "node -e \"process.exit(Date.now() - require('fs').statSync('/tmp/boxrush-worker-heartbeat').mtimeMs < 120000 ? 0 : 1)\""],
+    command: ["CMD-SHELL", "node -e \"process.exit(Date.now() - require('fs').statSync('/home/node/.boxrush-worker-heartbeat').mtimeMs < 120000 ? 0 : 1)\""],
     startPeriod: "60 seconds",
     interval: "30 seconds",
     retries: 3,

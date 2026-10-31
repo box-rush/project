@@ -103,9 +103,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let dailyRetryAt = 0;
   const { LocalDirStore, S3ObjectLockStore, archiveAuditBatch } = await import("./archive");
   const store = process.env.AUDIT_ARCHIVE_BUCKET ? new S3ObjectLockStore(process.env.AUDIT_ARCHIVE_BUCKET) : new LocalDirStore(process.env.AUDIT_ARCHIVE_DIR ?? ".audit-archive");
-  // the container health check reads this file's age (infra/stack.ts): a wedged loop gets the task replaced
-  const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? "/tmp/boxrush-worker-heartbeat";
+  // the container health check reads this file's age (infra/stack.ts): a wedged loop gets the task replaced.
+  // Only where configured (the container sets a path in the worker user's own home), never a shared temp directory.
+  const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE;
   const heartbeat = () => {
+    if (!heartbeatFile) return;
     try {
       writeFileSync(heartbeatFile, new Date().toISOString());
     } catch {
