@@ -164,8 +164,10 @@ export async function stationDetail(ctx: Ctx, p: StaffPrincipal, lotteryId: stri
     series: prods.map((x) => x.series),
     // the frozen snapshot keeps the original boxes; X4 swaps are applied on top (and published separately)
     subjectUnits: (snap?.subjectUnits ?? []).map((u) => {
-      const r = swaps.find((x) => x.fromLabel === u.label);
-      return r ? { label: r.toLabel, sealPhotoUrls: r.photoUrls } : u;
+      // follow the chain: A → B, then B → C shows C
+      let cur = u;
+      for (let r = swaps.find((x) => x.fromLabel === cur.label); r; r = swaps.find((x) => x.fromLabel === cur.label)) cur = { label: r.toLabel, sealPhotoUrls: r.photoUrls };
+      return cur;
     }),
     replacements: swaps,
     candidates: view.lottery.status === "READY" ? await replacementCandidates(ctx, lotteryId) : [],

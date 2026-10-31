@@ -89,11 +89,13 @@ export async function uploadIntakeDocument(ctx: Ctx, store: DocumentStore, p: St
   const id = randomUUID();
   const storageKey = join("intake", bookingId, id);
   const fileName = file.name.replace(/[\\/\r\n"]/g, "_").slice(0, 120) || "document";
-  await store.put(storageKey, file.bytes, contentType, sha256);
   const now = ctx.now();
+  // row first, file last, inside one transaction: a failed upload rolls the row back, so no record points at nothing
+  // and (barring a failed commit) no file is left without a record
   await ctx.db.transaction(async (tx) => {
     await tx.insert(documents).values({ id, intakeBookingId: bookingId, merchantId: booking.merchantId, fileName, contentType, size: file.bytes.length, sha256, storageKey, uploadedBy: p.id, uploadedAt: now });
     await audit(tx, staffActor(p), "intake.document", "intake_booking", bookingId, { documentId: id, fileName, sha256, size: file.bytes.length }, now);
+    await store.put(storageKey, file.bytes, contentType, sha256);
   });
   return { id, sha256 };
 }

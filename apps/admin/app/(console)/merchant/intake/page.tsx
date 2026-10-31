@@ -3,7 +3,8 @@ import { documentsForBookings, listProducts, merchantIntakes } from "@boxrush/se
 import { ActionForm } from "@/components/ActionForm";
 import { Empty, Field, Jst, PageHeader } from "@/components/ui";
 import { ctx, requirePageRole } from "@/lib/session";
-import { bookIntakeAction, uploadDocumentAction } from "../actions";
+import { bookIntakeAction } from "../actions";
+import { UploadProof } from "./UploadProof";
 
 const TONE: Record<string, string> = { BOOKED: "badge-primary", INSPECTING: "badge-warning", PASSED: "badge-trust", FAILED: "badge-error" };
 
@@ -81,9 +82,7 @@ export default async function MerchantIntake() {
                             </li>
                           ))}
                       </ul>
-                      <ActionForm action={uploadDocumentAction.bind(null, r.id)} submitLabel={t("upload")} submitClass="btn !min-h-7 text-xs" inline>
-                        <input name="file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="text-xs" aria-label={t("documentFile")} required />
-                      </ActionForm>
+                      <UploadProof bookingId={r.id} />
                     </td>
                   </tr>
                 ))}

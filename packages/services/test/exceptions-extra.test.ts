@@ -81,6 +81,29 @@ describe("X9 / X4 at the station and in attribution", () => {
     await expect(replaceSubjectUnit(ctx, w.station, lotteryId, { ...input, toUnitId: sameLot.id })).rejects.toMatchObject({ code: "NOT_SUBJECT_UNIT" });
     await abortForSealAnomaly(ctx, w.station, lotteryId);
     expect((await getLottery(ctx.db, lotteryId)).status).toBe("ABORTED");
+    // neither broken box can ever come back to stock and back a new lottery
+    const after = await ctx.db.select().from(inventoryUnits).where(eq(inventoryUnits.lotteryId, lotteryId));
+    expect(after.find((x) => x.id === box.id)).toMatchObject({ status: "REJECTED" });
+    expect(after.find((x) => x.id === sameLot.id)).toMatchObject({ status: "REJECTED" });
+  });
+
+  it("X4 then opening: the replaced box stays REJECTED, only the replacement is OPENED", async () => {
+    const clock = new Clock(JST(2026, 11, 3, 16));
+    const { ctx, payments } = makeCtx(clock);
+    const w = await makeWorld(ctx);
+    const lotteryId = await listedLottery(ctx, w, { slots: 2 });
+    const box = (await ctx.db.select().from(inventoryUnits).where(eq(inventoryUnits.lotteryId, lotteryId))).find((u) => u.kind === "SEALED")!;
+    await ctx.db.update(inventoryUnits).set({ lot: "LOT-C" }).where(eq(inventoryUnits.id, box.id));
+    const spare = await receiveUnit(ctx, w.warehouse, { kind: "SEALED", merchantId: w.merchant.id, productId: w.product.id, label: `BX-C-${Date.now()}`, sealPhotoUrls: ["/s.jpg"], passed: true, lot: "LOT-C" });
+    await buy(ctx, payments, await makeUser(ctx.db), lotteryId, 2);
+    await drain(ctx);
+    await replaceSubjectUnit(ctx, w.station, lotteryId, { fromUnitId: box.id, toUnitId: spare.id, reason: "破れ", photoUrls: ["https://example.com/x.jpg"] });
+    clock.set((await getLottery(ctx.db, lotteryId)).openingAt);
+    await startOpening(ctx, w.station, lotteryId, "ST-C");
+    await finishOpening(ctx, w.station, lotteryId);
+    const after = await ctx.db.select().from(inventoryUnits).where(eq(inventoryUnits.lotteryId, lotteryId));
+    expect(after.find((x) => x.id === box.id)).toMatchObject({ status: "REJECTED" });
+    expect(after.find((x) => x.id === spare.id)).toMatchObject({ status: "OPENED" });
   });
 
   it("X9: a defect note is set only while attributing, is shown with the card and frozen in the public record", async () => {

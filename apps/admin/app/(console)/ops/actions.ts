@@ -340,14 +340,14 @@ export async function updateFaqAction(id: string, _: Prev, fd: FormData) {
 
 export async function reportIncidentAction(shipmentId: string, _: Prev, fd: FormData) {
   return act((s) => reportShipmentIncident(ctx(), s, shipmentId, str(fd, "kind") === "DAMAGED" ? "DAMAGED" : "LOST", str(fd, "note")), {
-    revalidate: ["/ops/warehouse"],
+    revalidate: ["/ops/warehouse", "/ops/incidents"],
     message: "saved",
   });
 }
 export async function updateClaimAction(incidentId: string, _: Prev, fd: FormData) {
   const status = str(fd, "status") as "SUBMITTED" | "PAID" | "REJECTED";
   const amount = str(fd, "amount") ? num(fd, "amount") : undefined;
-  return act((s) => updateIncidentClaim(ctx(), s, incidentId, { status, claimRef: str(fd, "claimRef") || undefined, amount }), { revalidate: ["/ops/warehouse"], message: "saved" });
+  return act((s) => updateIncidentClaim(ctx(), s, incidentId, { status, claimRef: str(fd, "claimRef") || undefined, amount }), { revalidate: ["/ops/incidents"], message: "saved" });
 }
 
 export async function defectNoteAction(lotteryId: string, cardId: string, _: Prev, fd: FormData) {

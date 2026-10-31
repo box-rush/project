@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ingestFromDevice } from "@boxrush/services";
 import { ctx } from "@/lib/session";
 
-const STATUS: Record<string, number> = { UNAUTHORIZED: 401, FORBIDDEN: 403, INVALID_SEGMENT: 400, BAD_CHECKSUM: 400, SEGMENT_CONFLICT: 409 };
+const STATUS: Record<string, number> = { UNAUTHORIZED: 401, FORBIDDEN: 403, INVALID_SEGMENT: 400, BAD_CHECKSUM: 400, SEGMENT_CONFLICT: 409, RECORDING_CLOSED: 409 };
 
 /**
  * SV4: a station capture device appends one recording segment (checksum + storage URI).

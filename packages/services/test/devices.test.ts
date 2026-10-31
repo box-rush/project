@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { and, eq, stationDevices, videoSegments } from "@boxrush/db";
-import { getLottery, ingestFromDevice, registerDevice, revokeDevice, startOpening } from "../src";
+import { and, asc, eq, slots, stationDevices, videoSegments } from "@boxrush/db";
+import { enterCard, finalizeAttribution, finishOpening, getLottery, ingestFromDevice, registerDevice, revokeDevice, startOpening } from "../src";
 import { Clock, JST, buy, drain, listedLottery, makeCtx, makeUser, makeWorld } from "./helpers";
 
 describe("SV4 capture devices", () => {
@@ -43,6 +43,14 @@ describe("SV4 capture devices", () => {
     // a device of another station cannot write into this opening
     const other = await registerDevice(ctx, admin, { stationId: "ST-99", label: "other" });
     await expect(ingestFromDevice(ctx, other.token, { ...seg, seq: 2 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    // once attribution freezes the record nothing may be appended (the live record must match the frozen one)
+    const [s1] = await ctx.db.select().from(slots).where(eq(slots.lotteryId, lotteryId)).orderBy(asc(slots.purchaseSeq));
+    await enterCard(ctx, w.station, lotteryId, { raw: s1!.assignedNumbers![0]!, videoTsSec: 3 });
+    await finishOpening(ctx, w.station, lotteryId);
+    await ingestFromDevice(ctx, token, { ...seg, seq: 4 }); // ATTRIBUTING: late local backfill is still accepted
+    await finalizeAttribution(ctx, w.attrA, lotteryId);
+    await expect(ingestFromDevice(ctx, token, { ...seg, seq: 5 })).rejects.toMatchObject({ code: "RECORDING_CLOSED" });
 
     await revokeDevice(ctx, admin, id);
     await expect(ingestFromDevice(ctx, token, { ...seg, seq: 3 })).rejects.toMatchObject({ code: "UNAUTHORIZED" });

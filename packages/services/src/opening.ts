@@ -55,6 +55,10 @@ export async function ingestSegment(
   const [session] = await ctx.db.select().from(openingSessions).where(eq(openingSessions.lotteryId, seg.lotteryId));
   if (!session || session.stationId !== device.stationId) fail("FORBIDDEN");
   await ctx.db.transaction(async (tx) => {
+    // only while the recording is still evidence in the making: once attribution freezes the record (or the lottery
+    // is aborted), nothing may be appended — the live and the frozen record must never disagree
+    const lot = await lockLottery(tx, seg.lotteryId);
+    if (lot.status !== "OPENING" && lot.status !== "ATTRIBUTING") fail("RECORDING_CLOSED", { status: lot.status });
     const inserted = await tx.insert(videoSegments).values({ ...seg, backfilled: seg.backfilled ?? false }).onConflictDoNothing().returning({ id: videoSegments.id });
     if (!inserted.length) {
       // a retry of the same segment is fine; a different checksum for an existing segment is tampering or a device bug
@@ -159,9 +163,19 @@ export async function abortLottery(ctx: Ctx, actor: Actor, lotteryId: string, re
       await scheduleOrderRefund(tx, o, "ABORTED", now);
       await notify(tx, o.userId, "ABORTED_REFUNDED", { title: lot.title, reason, amount: formatYen(o.amount) }, `aborted:${o.id}`, now);
     }
-    // PD5: opened stock stays with the platform; unopened subject and unused guarantee cards go back to stock.
-    const opened = reason === "RECORDING_INTERRUPTED" ? "OPENED" : "IN_STOCK";
-    await tx.update(inventoryUnits).set({ status: opened }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED")));
+    // PD5: opened stock stays with the platform. A box whose seal is broken (X4) is rejected for good and never listed
+    // again; an unopened, intact box (beacon missing) goes back to stock. Only boxes still allocated are touched —
+    // a box already replaced under X4 stays REJECTED.
+    const subjectSet =
+      reason === "RECORDING_INTERRUPTED"
+        ? { status: "OPENED" as const }
+        : reason === "SEAL_ANOMALY"
+          ? { status: "REJECTED" as const, rejectReason: "X4: seal anomaly before opening" }
+          : { status: "IN_STOCK" as const, lotteryId: null };
+    await tx
+      .update(inventoryUnits)
+      .set(subjectSet)
+      .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
     await tx.update(inventoryUnits).set({ status: "IN_STOCK", lotteryId: null }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "GUARANTEE_CARD")));
     const { enqueue } = await import("./jobs");
     await enqueue(tx, "lottery.checkRefunded", `lottery:${lotteryId}:checkRefunded`, now, { lotteryId });
@@ -356,7 +370,10 @@ export async function finishOpening(ctx: Ctx, p: StaffPrincipal, lotteryId: stri
     const laborSeconds = session ? Math.round((now.getTime() - session.startedAt.getTime()) / 1000) : null;
     await tx.update(openingSessions).set({ endedAt: now, laborSeconds }).where(eq(openingSessions.lotteryId, lotteryId));
     await transition(tx, lot, "ATTRIBUTING", staffActor(p), { openingEndedAt: now }, now);
-    await tx.update(inventoryUnits).set({ status: "OPENED" }).where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED")));
+    await tx
+      .update(inventoryUnits)
+      .set({ status: "OPENED" })
+      .where(and(eq(inventoryUnits.lotteryId, lotteryId), eq(inventoryUnits.kind, "SEALED"), eq(inventoryUnits.status, "ALLOCATED")));
   });
 }
 

@@ -19,7 +19,7 @@ const g = globalThis as unknown as { __boxrushCtx?: Ctx; __boxrushMock?: MockPay
 
 /** Shared mock provider so the dev checkout and the webhook simulator see the same payments. */
 export function mockPayments(): MockPaymentProvider {
-  return (g.__boxrushMock ??= new MockPaymentProvider({ crossProcess: true }));
+  return (g.__boxrushMock ??= new MockPaymentProvider({ crossProcess: process.env.NODE_ENV !== "production" }));
 }
 
 /** T11: KMS in deployed environments; the local AES key only when no KMS key is configured. */
@@ -48,18 +48,22 @@ export function createRuntime(): Ctx {
   if (g.__boxrushCtx) return g.__boxrushCtx;
   const { db } = createDb(process.env.DATABASE_URL);
   const messaging = new ConsoleMessaging();
-  let payments: PaymentProvider;
-  // a deployment must say which provider it uses; a missing setting never silently falls back to the mock
-  if (process.env.NODE_ENV === "production" && !["stripe", "mock"].includes(process.env.PAYMENT_PROVIDER ?? ""))
-    throw new Error("PAYMENT_PROVIDER must be set to stripe (or mock for local production builds)");
-  if (process.env.PAYMENT_PROVIDER === "stripe") {
-    payments = new StripePaymentProvider(required("STRIPE_SECRET_KEY"), required("STRIPE_WEBHOOK_SECRET"));
-  } else payments = mockPayments();
+  let paymentsProvider: PaymentProvider | undefined;
   let rngService: RandomnessService | undefined;
   const ctx: Ctx = {
     db,
     now: () => new Date(),
-    payments,
+    // lazy, like rng: `next build` evaluates route modules without the runtime environment
+    get payments() {
+      if (!paymentsProvider) {
+        // a deployment must say which provider it uses; a missing setting never silently falls back to the mock
+        if (process.env.NODE_ENV === "production" && !["stripe", "mock"].includes(process.env.PAYMENT_PROVIDER ?? ""))
+          throw new Error("PAYMENT_PROVIDER must be set to stripe (or mock for local production builds)");
+        paymentsProvider =
+          process.env.PAYMENT_PROVIDER === "stripe" ? new StripePaymentProvider(required("STRIPE_SECRET_KEY"), required("STRIPE_WEBHOOK_SECRET")) : mockPayments();
+      }
+      return paymentsProvider;
+    },
     // lazy: the seed key is resolved on first use, never at import / build time
     get rng() {
       if (!rngService) {
