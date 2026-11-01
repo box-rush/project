@@ -15,15 +15,26 @@ export interface ArchiveStore {
   put(key: string, body: string, sha256: string): Promise<void>;
 }
 
+export type ArchiveLock = { mode: "COMPLIANCE" | "GOVERNANCE"; retainDays: number };
+
+/**
+ * T7: production keeps every batch in COMPLIANCE mode for 10 years (nobody, not even the account root, can delete it).
+ * Other stages use GOVERNANCE for 1 day, so a test stage can be torn down: COMPLIANCE there would leave undeletable
+ * objects (and their bill) behind for the whole retention period.
+ */
+export function archiveLockFromEnv(env: NodeJS.ProcessEnv = process.env): ArchiveLock {
+  if (env.BOXRUSH_STAGE === "production" || !env.BOXRUSH_STAGE) return { mode: "COMPLIANCE", retainDays: 3653 };
+  return { mode: "GOVERNANCE", retainDays: 1 };
+}
+
 export class S3ObjectLockStore implements ArchiveStore {
   constructor(
     private readonly bucket: string,
-    private readonly retainYears = 10,
+    private readonly lock: ArchiveLock = { mode: "COMPLIANCE", retainDays: 3653 },
     private readonly client: Pick<S3Client, "send"> = new S3Client(awsClientConfig()),
   ) {}
   async put(key: string, body: string, sha256: string) {
-    const until = new Date();
-    until.setUTCFullYear(until.getUTCFullYear() + this.retainYears);
+    const until = new Date(Date.now() + this.lock.retainDays * 86_400_000);
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -31,7 +42,7 @@ export class S3ObjectLockStore implements ArchiveStore {
         Body: body,
         ContentType: "application/x-ndjson",
         ChecksumSHA256: Buffer.from(sha256, "hex").toString("base64"),
-        ObjectLockMode: "COMPLIANCE",
+        ObjectLockMode: this.lock.mode,
         ObjectLockRetainUntilDate: until,
       }),
     );

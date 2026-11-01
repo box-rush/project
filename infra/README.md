@@ -6,13 +6,13 @@ Typecheck: `npx tsc -p infra/tsconfig.json` (after `npx sst install --stage <sta
 ## What gets created
 | Resource | Notes |
 |---|---|
-| VPC, 2 AZ, managed NAT, bastion | private subnets for RDS and Fargate |
+| VPC, 2 AZ, NAT, bastion | private subnets for RDS and Fargate; production: a managed NAT Gateway per AZ; other stages: a t4g.nano fck-nat instance per AZ that is also the bastion, and the services on Fargate Spot (cost) |
 | RDS PostgreSQL 16 | Multi-AZ, 35-day backups and deletion protection in production |
 | ECS Fargate: `Web`, `Admin`, `Worker` | images from `infra/Dockerfile` (targets `web`, `admin`, `worker`); Worker is exactly 1 task |
 | ECS tasks `Migrate`, `DbRoles`, `Seed` | worker image, as the RDS owner: migrations; the restricted DB logins (`packages/db/sql/login-roles.sql`); demo data (test mode only). `node infra/run-task.mjs <Name>` |
 | CloudFront `AdminCdn` + WAF `boxrush-<stage>-admin` | the back office: IP allowlist `ADMIN_ALLOWED_CIDRS` in the WAF, HTTPS even without a domain |
 | KMS key `SeedKey` | server-seed encryption (T11); only the services' task role may use it |
-| S3 `AuditArchive` | Object Lock compliance mode (10 years in production) for the hourly audit export (T7) |
+| S3 `AuditArchive` | Object Lock for the hourly audit export (T7): COMPLIANCE 10 years in production; GOVERNANCE 1 day elsewhere, so a test stage can be removed |
 | CloudFront `WebCdn` + WAF `boxrush-<stage>-web` (us-east-1) | public entry for the web app (T18): AWS managed rules, 2,000 req / 5 min and 300 POST / 5 min per IP; CDN for static assets and frozen records; the web load balancer accepts only CloudFront (`origin.<domain>`) |
 | AWS Backup (production) | daily RDS backup kept 35 days, copied to Osaka (ap-northeast-3) |
 | Secrets Manager `boxrush/<stage>/*` | every credential the containers read (T18) |

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { H } from "@boxrush/core";
 import { orders, eq } from "@boxrush/db";
-import { audit, LocalDirStore, S3ObjectLockStore, archiveAuditBatch, disputeEvidence, startOpening, enterCard, finishOpening, finalizeAttribution, getLottery } from "../src";
+import { audit, LocalDirStore, S3ObjectLockStore, archiveLockFromEnv, archiveAuditBatch, disputeEvidence, startOpening, enterCard, finishOpening, finalizeAttribution, getLottery } from "../src";
 import { Clock, JST, buy, drain, listedLottery, makeCtx, makeUser, makeWorld } from "./helpers";
 
 describe("P8 dispute evidence pack", () => {
@@ -52,12 +52,20 @@ describe("T7 audit archive", () => {
     expect(second!.seqFrom).toBe(first!.seqTo + 1);
   });
 
-  it("S3 store writes with compliance-mode Object Lock and a SHA-256 checksum", async () => {
+  it("S3 store writes with compliance-mode Object Lock (10 years) and a SHA-256 checksum on production", async () => {
     const send = vi.fn().mockResolvedValue({});
-    await new S3ObjectLockStore("bucket", 10, { send } as never).put("k", "body", H("body"));
+    await new S3ObjectLockStore("bucket", archiveLockFromEnv({ BOXRUSH_STAGE: "production" }), { send } as never).put("k", "body", H("body"));
     const input = send.mock.calls[0]![0].input;
     expect(input).toMatchObject({ Bucket: "bucket", Key: "k", ObjectLockMode: "COMPLIANCE" });
-    expect(input.ObjectLockRetainUntilDate.getUTCFullYear()).toBe(new Date().getUTCFullYear() + 10);
+    expect(input.ObjectLockRetainUntilDate.getUTCFullYear()).toBeGreaterThanOrEqual(new Date().getUTCFullYear() + 10);
     expect(Buffer.from(input.ChecksumSHA256, "base64").toString("hex")).toBe(H("body"));
+  });
+
+  it("other stages lock for one day in governance mode, so the stage can be removed", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await new S3ObjectLockStore("bucket", archiveLockFromEnv({ BOXRUSH_STAGE: "staging" }), { send } as never).put("k", "body", H("body"));
+    const input = send.mock.calls[0]![0].input;
+    expect(input.ObjectLockMode).toBe("GOVERNANCE");
+    expect(input.ObjectLockRetainUntilDate.getTime() - Date.now()).toBeLessThanOrEqual(86_400_000);
   });
 });

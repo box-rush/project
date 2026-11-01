@@ -78,7 +78,10 @@ aws cloudformation describe-stacks --stack-name boxrush-github-deploy-staging --
 | 后台二段階認証 | 认证应用里手动添加密钥 `JBSWY3DPEHPK3PXP`（所有测试员工共用，只用于测试） |
 
 其他操作：action `status` 打印最近日志与告警；action `remove` 删除整个 staging（`confirm` 里填 `staging`）。
-**不用时建议 remove**：staging 常驻约每月 150–200 美元（NAT、2 个负载均衡器、RDS、Fargate、WAF、Secrets Manager 为主；⚠️ 粗略估算，以账单为准）。
+**费用**（⚠️ 东京区公开单价的粗略估算，以账单为准）：staging 常驻约每月 130–150 美元。主要是 2 个负载均衡器约 40、
+公网 IPv4 地址约 22、RDS 约 21、WAF 约 20、Fargate Spot 约 14、NAT 实例约 8、Secrets Manager 约 7（美元）。
+staging 已用省钱配置：NAT 用 t4g.nano 实例（兼做跳板机）代替 NAT Gateway、容器用 Fargate Spot。
+**不用时用 action `remove` 删掉**，按小时计费，开着的每天约 4–5 美元；下次 `deploy` 约 30–40 分钟，演示数据会重新导入。
 
 以后要接真实服务时：设置 Stripe / Twilio 等密钥（第 4、6 节），把 `BOXRUSH_TEST_MODE` 改成 `0` 或删掉，重新部署。
 
@@ -277,6 +280,8 @@ npx sst shell --stage staging -- node infra/run-task.mjs Migrate
 | 项目 | production |
 |---|---|
 | 数据库 | t4g.medium、Multi-AZ、删除保护、备份保留 35 天 + 每日复制到大阪 |
+| NAT / 容器 | 每个可用区一个 NAT Gateway、Fargate 按需（staging：NAT 实例、Fargate Spot） |
+| 审计归档（S3 Object Lock） | COMPLIANCE 10 年（staging：GOVERNANCE 1 天，可以删除整个环境） |
 | web | 2–8 个任务自动扩缩 |
 | 日志保留 | 3 个月 |
 | 资源删除 | `sst remove` 也会保留（removal: retain） |

@@ -73,7 +73,12 @@ const adminAllowedCidrs = (process.env.ADMIN_ALLOWED_CIDRS ?? "").split(",").map
 if ((isProd || testMode) && adminAllowedCidrs.length === 0) throw new Error("ADMIN_ALLOWED_CIDRS is required for production and test mode (T18)");
 
 // ── network & database ──────────────────────────────────────────────────────────────────────────
-const vpc = new sst.aws.Vpc("Vpc", { nat: "managed", bastion: true, az: 2 });
+// Cost: production uses a managed NAT Gateway per AZ; other stages use a t4g.nano fck-nat instance per AZ (~10x
+// cheaper, also serving as the bastion, so no separate bastion instance).
+const vpc = new sst.aws.Vpc("Vpc", { nat: isProd ? "managed" : "ec2", bastion: true, az: 2 });
+// Cost: outside production the services run on Fargate Spot (~70% cheaper; a task can be reclaimed with a 2-minute
+// SIGTERM, which the worker handles by finishing the jobs in hand — fine for staging, never for production)
+const capacity = isProd ? undefined : ("spot" as const);
 
 const db = new sst.aws.Postgres("Db", {
   vpc,
@@ -113,7 +118,9 @@ const auditArchive = new sst.aws.Bucket("AuditArchive", {
 });
 new aws.s3.BucketObjectLockConfigurationV2("AuditArchiveLock", {
   bucket: auditArchive.name,
-  rule: { defaultRetention: { mode: "COMPLIANCE", years: isProd ? 10 : 1 } },
+  // production: COMPLIANCE 10 years; other stages GOVERNANCE 1 day so `sst remove` can empty the bucket (the worker sets
+  // the same per object: services/src/archive.ts archiveLockFromEnv)
+  rule: { defaultRetention: isProd ? { mode: "COMPLIANCE", years: 10 } : { mode: "GOVERNANCE", days: 1 } },
 });
 
 // F16.3 purchase proofs: private, versioned, never public; only the back office reads and writes it
@@ -196,6 +203,7 @@ const image = (target: string) => ({ context: ".", dockerfile: "infra/Dockerfile
 // ── services ────────────────────────────────────────────────────────────────────────────────────
 const web = new sst.aws.Service("Web", {
   cluster,
+  capacity,
   // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
   logging: { name: `/boxrush/${stage}/web`, retention: isProd ? "3 months" : "1 month" },
   image: image("web"),
@@ -236,6 +244,7 @@ const web = new sst.aws.Service("Web", {
 
 const admin = new sst.aws.Service("Admin", {
   cluster,
+  capacity,
   // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
   logging: { name: `/boxrush/${stage}/admin`, retention: isProd ? "3 months" : "1 month" },
   image: image("admin"),
@@ -263,6 +272,7 @@ const admin = new sst.aws.Service("Admin", {
 
 const worker = new sst.aws.Service("Worker", {
   cluster,
+  capacity,
   // fixed log group so the monitoring metric filters (infra/monitoring.ts) can target it
   logging: { name: `/boxrush/${stage}/worker`, retention: isProd ? "3 months" : "1 month" },
   image: image("worker"),
