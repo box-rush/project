@@ -23,7 +23,7 @@
     "@boxrush/core": "workspace:*",
     "@boxrush/db": "workspace:*",
     "@sentry/node": "^10.78.0",
-    "stripe": "^18.0.0",
+    "stripe": "^23.1.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
