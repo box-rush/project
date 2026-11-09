@@ -19,7 +19,7 @@
     "login-roles": "tsx src/loginRoles.ts"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.0",
+    "drizzle-orm": "^0.45.4",
     "pg": "^8.16.0"
   },
   "devDependencies": {
